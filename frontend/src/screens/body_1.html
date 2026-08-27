@@ -1,0 +1,273 @@
+<!-- TopNavBar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-gutter h-[48px] bg-surface-container/80 backdrop-blur-md border-b border-white/10">
+<div class="flex items-center gap-6">
+<span class="font-display-lg text-headline-md font-bold text-primary tracking-tight">SYNCSCRIPT</span>
+<nav class="hidden md:flex items-center gap-6 h-full">
+<a class="font-body-base text-body-base text-on-surface-variant hover:text-primary transition-colors duration-200" href="#">Rooms</a>
+<a class="font-body-base text-body-base text-primary border-b-2 border-primary pb-1" href="#">Sessions</a>
+<a class="font-body-base text-body-base text-on-surface-variant hover:text-primary transition-colors duration-200" href="#">History</a>
+</nav>
+</div>
+<div class="flex-1 max-w-md mx-8">
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full bg-surface-variant/50 border-none rounded-lg py-1.5 pl-10 pr-4 text-body-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none" placeholder="Production-API-V2" type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<button class="px-4 py-1.5 rounded-lg border border-outline-variant text-body-sm font-medium hover:bg-surface-variant transition-all">Save</button>
+<button class="px-4 py-1.5 rounded-lg bg-primary text-white text-body-sm font-medium hover:brightness-110 shadow-sm transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">play_arrow</span>
+                Run
+            </button>
+<div class="h-6 w-[1px] bg-outline-variant mx-2"></div>
+<button class="p-2 text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined">settings</span></button>
+<div class="w-8 h-8 rounded-full bg-secondary-container flex items-center justify-center border border-primary/10 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A professional studio portrait of a software engineer with a friendly expression, set against a soft blurred office background with warm lighting, high-quality digital photography style consistent with a modern tech platform." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDP0NChqoJF3czUPc2mjkQrVmx35myZmDk6pvhtjXHc4RO4JPFVo9wx9ilKY2-4X7y-s9G1_7TdKfkffCMqg3KtbPj2LWnvAAfkD2P8F_Cx6sGXu4FiY-J6f8Tcj4pXJuqnlvDWYPfEFXDb33_Gc4l-5y2FtVOi0ld5SnpnaEwFwXjCOnyPDxCOXmXQpZf142LveyVqpWr2VtWutuSdZgK1Qo0cEFOsB1sEBbCZCY_sgERNsR3mTXFEjELeQnD3LZBMWchK8vvOWNQ"/>
+</div>
+</div>
+</header>
+<main class="flex editor-container pt-[48px]">
+<!-- SideNavBar (Activity Bar) -->
+<aside class="fixed left-0 top-12 bottom-0 flex flex-col w-[64px] bg-sidebar-bg border-r border-white/10 z-40">
+<div class="flex flex-col items-center py-4 gap-6">
+<button class="p-2.5 text-primary bg-primary/10 border-l-2 border-primary transition-all duration-200"><span class="material-symbols-outlined">description</span></button>
+<button class="p-2.5 text-outline hover:bg-surface-variant/50 transition-all duration-200"><span class="material-symbols-outlined">search</span></button>
+<button class="p-2.5 text-outline hover:bg-surface-variant/50 transition-all duration-200"><span class="material-symbols-outlined">account_tree</span></button>
+<button class="p-2.5 text-outline hover:bg-surface-variant/50 transition-all duration-200"><span class="material-symbols-outlined">bug_report</span></button>
+<button class="p-2.5 text-outline hover:bg-surface-variant/50 transition-all duration-200"><span class="material-symbols-outlined">extension</span></button>
+</div>
+<div class="mt-auto flex flex-col items-center py-4 gap-4">
+<button class="p-2.5 text-outline hover:bg-surface-variant/50 transition-all duration-200"><span class="material-symbols-outlined">settings</span></button>
+<button class="p-2.5 text-outline hover:bg-surface-variant/50 transition-all duration-200"><span class="material-symbols-outlined">person</span></button>
+</div>
+</aside>
+<!-- Left File Tree Panel -->
+<div class="w-[260px] bg-sidebar-bg border-r border-white/10 ml-[64px] flex flex-col">
+<div class="px-4 py-3 flex items-center justify-between border-b border-white/5">
+<span class="font-label-caps text-label-caps text-outline uppercase">Explorer</span>
+<span class="material-symbols-outlined text-[16px] text-outline cursor-pointer">more_horiz</span>
+</div>
+<div class="flex-1 overflow-y-auto custom-scrollbar p-2">
+<div class="flex items-center gap-2 py-1 px-2 text-on-surface hover:bg-surface-variant/50 rounded cursor-pointer group">
+<span class="material-symbols-outlined text-[16px] transition-transform group-hover:rotate-90">chevron_right</span>
+<span class="font-body-sm text-body-sm font-semibold">src</span>
+</div>
+<div class="pl-4">
+<div class="flex items-center gap-2 py-1 px-2 text-on-surface hover:bg-surface-variant/50 rounded cursor-pointer">
+<span class="material-symbols-outlined text-[16px] text-primary">javascript</span>
+<span class="font-body-sm text-body-sm">api.config.js</span>
+</div>
+<div class="flex items-center gap-2 py-1 px-2 bg-primary/10 text-primary rounded cursor-pointer border-l-2 border-primary">
+<span class="material-symbols-outlined text-[16px]">javascript</span>
+<span class="font-body-sm text-body-sm">Production-API-V2.js</span>
+</div>
+<div class="flex items-center gap-2 py-1 px-2 text-on-surface hover:bg-surface-variant/50 rounded cursor-pointer">
+<span class="material-symbols-outlined text-[16px] text-primary">javascript</span>
+<span class="font-body-sm text-body-sm">auth-middleware.js</span>
+</div>
+</div>
+<div class="flex items-center gap-2 py-1 px-2 text-on-surface hover:bg-surface-variant/50 rounded cursor-pointer mt-2">
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+<span class="font-body-sm text-body-sm font-semibold">tests</span>
+</div>
+<div class="flex items-center gap-2 py-1 px-2 text-on-surface hover:bg-surface-variant/50 rounded cursor-pointer mt-2">
+<span class="material-symbols-outlined text-[16px] text-status-warning">description</span>
+<span class="font-body-sm text-body-sm">package.json</span>
+</div>
+</div>
+<div class="p-4 bg-primary-container m-2 rounded-xl">
+<p class="font-body-sm text-body-sm text-on-primary-container font-medium mb-2">Collaboration</p>
+<div class="flex -space-x-2">
+<div class="w-6 h-6 rounded-full border-2 border-white bg-blue-400"></div>
+<div class="w-6 h-6 rounded-full border-2 border-white bg-purple-400"></div>
+<div class="w-6 h-6 rounded-full border-2 border-white bg-emerald-400"></div>
+<div class="w-6 h-6 rounded-full border-2 border-white bg-surface-variant flex items-center justify-center text-[10px] font-bold">+3</div>
+</div>
+<button class="w-full mt-3 py-1.5 bg-editor-bg text-primary rounded-lg font-body-sm text-body-sm font-semibold shadow-sm hover:shadow-md transition-all">Invite</button>
+</div>
+</div>
+<!-- Center Code Area -->
+<div class="flex-1 flex flex-col bg-editor-bg">
+<!-- Tabs -->
+<div class="h-9 flex items-center bg-surface-variant border-b border-white/10 px-2 gap-1">
+<div class="px-3 py-1.5 h-full flex items-center gap-2 bg-editor-bg border-t-2 border-primary text-primary cursor-pointer">
+<span class="material-symbols-outlined text-[14px]">javascript</span>
+<span class="font-body-sm text-body-sm font-medium">Production-API-V2.js</span>
+<span class="material-symbols-outlined text-[14px] hover:bg-surface-variant/40 rounded-sm">close</span>
+</div>
+<div class="px-3 py-1.5 h-full flex items-center gap-2 text-on-surface-variant hover:bg-surface-variant/40 cursor-pointer transition-colors">
+<span class="material-symbols-outlined text-[14px]">javascript</span>
+<span class="font-body-sm text-body-sm">api.config.js</span>
+<span class="material-symbols-outlined text-[14px]">close</span>
+</div>
+</div>
+<!-- Code Editor Surface -->
+<div class="flex-1 flex overflow-hidden">
+<div class="flex-1 flex flex-col font-code-base text-code-base overflow-y-auto custom-scrollbar py-4 bg-editor-bg relative">
+<!-- Collaborator Cursor (Visual Effect) -->
+<div class="absolute left-[340px] top-[140px] flex flex-col items-start z-10">
+<div class="bg-primary text-white text-[10px] px-1 rounded-sm font-body-base shadow-lg">Sarah</div>
+<div class="w-[2px] h-5 bg-primary cursor-blink"></div>
+</div>
+<div class="flex leading-relaxed group hover:bg-surface-container-low transition-colors">
+<span class="line-number w-12">1</span>
+<span class="text-on-surface"><span class="text-syntax-pink italic">import</span> { createServer } <span class="text-syntax-pink italic">from</span> <span class="text-status-active">'sync-core'</span>;</span>
+</div>
+<div class="flex leading-relaxed group hover:bg-surface-container-low transition-colors">
+<span class="line-number w-12">2</span>
+<span class="text-on-surface"><span class="text-syntax-pink italic">import</span> { routes } <span class="text-syntax-pink italic">from</span> <span class="text-status-active">'./api.config.js'</span>;</span>
+</div>
+<div class="flex leading-relaxed group hover:bg-surface-container-low transition-colors">
+<span class="line-number w-12">3</span>
+<span></span>
+</div>
+<div class="flex leading-relaxed group hover:bg-surface-container-low transition-colors">
+<span class="line-number w-12">4</span>
+<span class="text-outline italic">// Initialize the Production API Cluster v2.4.0</span>
+</div>
+<div class="flex leading-relaxed group hover:bg-surface-container-low transition-colors">
+<span class="line-number w-12">5</span>
+<span class="text-on-surface"><span class="text-syntax-pink italic">const</span> app = createServer({</span>
+</div>
+<div class="flex leading-relaxed group hover:bg-surface-container-low transition-colors">
+<span class="line-number w-12">6</span>
+<span class="text-on-surface pl-4">clusterId: <span class="text-syntax-cyan">'PROD-NODE-MAIN'</span>,</span>
+</div>
+<div class="flex leading-relaxed group hover:bg-surface-container-low transition-colors">
+<span class="line-number w-12">7</span>
+<span class="text-on-surface pl-4">latencyThreshold: <span class="text-secondary">40</span>,</span>
+</div>
+<div class="flex leading-relaxed group hover:bg-surface-container-low transition-colors">
+<span class="line-number w-12">8</span>
+<span class="text-on-surface pl-4">retryStrategy: <span class="text-status-active">'EXPONENTIAL_BACKOFF'</span></span>
+</div>
+<div class="flex leading-relaxed group hover:bg-surface-container-low transition-colors">
+<span class="line-number w-12">9</span>
+<span class="text-on-surface">});</span>
+</div>
+<div class="flex leading-relaxed group hover:bg-surface-container-low transition-colors">
+<span class="line-number w-12">10</span>
+<span></span>
+</div>
+<div class="flex leading-relaxed group hover:bg-surface-container-low transition-colors">
+<span class="line-number w-12">11</span>
+<span class="text-on-surface">app.use(routes);</span>
+</div>
+<div class="flex leading-relaxed group hover:bg-surface-container-low transition-colors">
+<span class="line-number w-12">12</span>
+<span class="text-on-surface">app.listen(<span class="text-secondary">8080</span>, () => {</span>
+</div>
+<div class="flex leading-relaxed group hover:bg-surface-container-low transition-colors">
+<span class="line-number w-12">13</span>
+<span class="text-on-surface pl-4">console.log(<span class="text-status-active">"SyncScript Production API running on 8080"</span>);</span>
+</div>
+<div class="flex leading-relaxed group hover:bg-surface-container-low transition-colors">
+<span class="line-number w-12">14</span>
+<span class="text-on-surface">});</span>
+</div>
+</div>
+<!-- Right Chat Panel -->
+<aside class="w-[300px] border-l border-white/10 flex flex-col bg-sidebar-bg">
+<div class="p-3 border-b border-white/5 flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-outline uppercase">AI Copilot</span>
+<span class="material-symbols-outlined text-[16px] text-outline">auto_awesome</span>
+</div>
+<div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4 custom-scrollbar">
+<div class="flex gap-2">
+<div class="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[14px] text-primary">smart_toy</span>
+</div>
+<div class="bg-editor-bg p-3 rounded-lg rounded-tl-none border border-white/5 shadow-sm text-body-sm">
+                                I notice you're missing a health-check endpoint. Would you like me to generate one for this cluster configuration?
+                            </div>
+</div>
+<div class="flex flex-row-reverse gap-2">
+<div class="w-6 h-6 rounded-lg bg-secondary-container flex items-center justify-center flex-shrink-0 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="Small round user profile avatar of a tech worker in a light blue shirt, bright and clean office lighting, professional photography style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBdwjSWDMmJRsauH8105XU-YjGWCVM2q-0tAXId9fz2VdmOTAMUvuOfl1mPuKCROpLB8LR-hF0R1FloncvpI0Ce2nwixqdbclgLwUz0UHFZeeWRQKyVShnl1o0fHttLg7aw9A5yMsvx9yveeD_SIURpELrID_5TTH2Z0jgBt2BRKFB-vdkhQ50ZAlbaVxgplcY6h0t-6eT74QJAIkvCN_IYuH005iimlPz9jJW_D6RKL8GrKJOhHyL9M1jF4D0rGlryqM9OuJYwhMo"/>
+</div>
+<div class="bg-primary text-white p-3 rounded-lg rounded-tr-none shadow-sm text-body-sm">
+                                Yes, please. Add it to line 15.
+                            </div>
+</div>
+</div>
+<div class="p-3 bg-editor-bg border-t border-white/10">
+<div class="relative">
+<textarea class="w-full bg-surface-variant border-none rounded-lg p-3 text-body-sm resize-none focus:ring-1 focus:ring-primary/30 outline-none" placeholder="Ask AI..." rows="2"></textarea>
+<button class="absolute right-2 bottom-2 p-1.5 text-primary hover:bg-primary/5 rounded-md transition-all">
+<span class="material-symbols-outlined">send</span>
+</button>
+</div>
+</div>
+</aside>
+</div>
+<!-- Bottom Terminal -->
+<div class="h-[220px] bg-editor-bg border-t border-white/10 flex flex-col">
+<div class="flex items-center px-4 bg-surface-variant border-b border-white/5 h-8 gap-6">
+<div class="flex items-center gap-1 border-b-2 border-primary h-full px-2 cursor-pointer">
+<span class="font-label-caps text-label-caps text-primary">TERMINAL</span>
+</div>
+<div class="flex items-center gap-1 h-full px-2 cursor-pointer text-outline hover:text-on-surface">
+<span class="font-label-caps text-label-caps">OUTPUT</span>
+</div>
+<div class="flex items-center gap-1 h-full px-2 cursor-pointer text-outline hover:text-on-surface">
+<span class="font-label-caps text-label-caps">DEBUG CONSOLE</span>
+</div>
+<div class="ml-auto flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-outline cursor-pointer hover:text-on-surface">add</span>
+<span class="material-symbols-outlined text-[16px] text-outline cursor-pointer hover:text-on-surface">close</span>
+</div>
+</div>
+<div class="flex-1 p-4 font-code-sm text-code-sm overflow-y-auto custom-scrollbar bg-editor-bg">
+<div class="flex gap-2">
+<span class="text-status-active">➜</span>
+<span class="text-primary font-bold">~/syncscript-project</span>
+<span class="text-on-surface">npm start</span>
+</div>
+<div class="text-outline mt-1">> production-api-v2@1.0.4 start</div>
+<div class="text-outline">> node src/Production-API-V2.js</div>
+<div class="mt-2 text-on-surface">
+                        [<span class="text-status-active">INFO</span>] Successfully connected to Cluster Manager...
+                    </div>
+<div class="text-on-surface">
+                        [<span class="text-status-active">INFO</span>] SyncScript Production API running on 8080
+                    </div>
+<div class="text-status-warning">
+                        [WARN] Latency detected in NODE-SECONDARY (42ms)
+                    </div>
+<div class="flex gap-2 mt-2">
+<span class="text-status-active">➜</span>
+<span class="text-primary font-bold">~/syncscript-project</span>
+<span class="w-2 h-4 bg-primary/40 cursor-blink mt-0.5"></span>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Contextual Floating Status Bar -->
+<footer class="fixed bottom-0 left-0 right-0 h-6 bg-primary flex items-center justify-between px-4 text-white z-50">
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-1 hover:bg-editor-bg/10 px-1 rounded transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-[12px]">account_tree</span>
+<span class="font-code-sm text-[10px]">main*</span>
+</div>
+<div class="flex items-center gap-1 hover:bg-editor-bg/10 px-1 rounded transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-[12px]">sync</span>
+<span class="font-code-sm text-[10px]">Production-API-V2</span>
+</div>
+<div class="flex items-center gap-1 hover:bg-editor-bg/10 px-1 rounded transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-[12px]">error</span>
+<span class="font-code-sm text-[10px]">0</span>
+<span class="material-symbols-outlined text-[12px]">warning</span>
+<span class="font-code-sm text-[10px]">1</span>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<span class="font-code-sm text-[10px]">UTF-8</span>
+<span class="font-code-sm text-[10px]">JavaScript</span>
+<div class="flex items-center gap-1 hover:bg-editor-bg/10 px-1 rounded transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-[12px]">rss_feed</span>
+<span class="font-code-sm text-[10px]">Live</span>
+</div>
+</div>
+</footer>

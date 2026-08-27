@@ -1,0 +1,119 @@
+<!-- Subtle Background Elements -->
+<div class="fixed inset-0 z-0 bg-editor-bg">
+<div class="absolute inset-0 bg-grid opacity-30"></div>
+<div class="absolute inset-0 overflow-hidden pointer-events-none opacity-20 code-bg-overlay">
+<div class="p-gutter font-code-sm text-syntax-cyan space-y-2">
+<p>const auth = await syncscript.init({</p>
+<p class="pl-4">provider: 'github',</p>
+<p class="pl-4">mode: 'secure',</p>
+<p class="pl-4">callback: (user) =&gt; {</p>
+<p class="pl-8 text-syntax-pink">console.log(`Welcome back, ${user.name}`);</p>
+<p class="pl-4">}</p>
+<p>});</p>
+<p> </p>
+<p>class SessionManager {</p>
+<p class="pl-4">async createSession(id: string) {</p>
+<p class="pl-8">return await this.db.sessions.put({ id, timestamp: Date.now() });</p>
+<p class="pl-4">}</p>
+<p>}</p>
+</div>
+<div class="absolute top-1/2 right-10 transform -translate-y-1/2 font-code-sm text-outline space-y-2 opacity-40">
+<p>&lt;div class="container mx-auto p-4"&gt;</p>
+<p class="pl-4">&lt;nav class="flex justify-between"&gt;</p>
+<p class="pl-8">&lt;Logo /&gt;</p>
+<p class="pl-8">&lt;UserMenu /&gt;</p>
+<p class="pl-4">&lt;/nav&gt;</p>
+<p>&lt;/div&gt;</p>
+</div>
+</div>
+<!-- Atmospheric Glows -->
+<div class="absolute -top-[20%] -left-[10%] w-[600px] h-[600px] bg-primary/5 rounded-full blur-[120px]"></div>
+<div class="absolute -bottom-[20%] -right-[10%] w-[500px] h-[500px] bg-secondary/5 rounded-full blur-[120px]"></div>
+</div>
+<!-- Main Content -->
+<main class="relative z-10 min-h-screen flex items-center justify-center p-gutter">
+<div class="w-full max-w-[420px]">
+<!-- Header Brand -->
+<div class="text-center mb-8">
+<div class="inline-flex items-center justify-center p-3 rounded-xl bg-surface-container border border-white/5 mb-4">
+<span class="material-symbols-outlined text-primary text-3xl" style="font-variation-settings: 'FILL' 1;">terminal</span>
+</div>
+<h1 class="font-display-lg text-headline-md text-on-surface tracking-tight">SYNCSCRIPT</h1>
+<p class="text-outline font-body-sm mt-1">Real-time collaboration for technical teams.</p>
+</div>
+<!-- Login Card -->
+<div class="glass-card rounded-xl p-8">
+<div class="space-y-6">
+<!-- Social Login -->
+<div class="space-y-2">
+  <button type="button" disabled class="w-full opacity-60 cursor-not-allowed flex items-center justify-center gap-3 py-2.5 px-4 bg-[#24292f] text-white/70 font-body-base rounded-lg border border-white/10 relative group">
+    <svg class="w-5 h-5 fill-current opacity-70" viewbox="0 0 24 24">
+      <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"></path>
+    </svg>
+    <span>Sign in with GitHub</span>
+    <span class="ml-auto text-[10px] uppercase font-bold bg-[#383f4a] text-gray-300 px-2 py-0.5 rounded">Coming Soon</span>
+  </button>
+  <button type="button" disabled class="w-full opacity-60 cursor-not-allowed flex items-center justify-center gap-3 py-2.5 px-4 bg-[#ffffff]/10 text-white/70 font-body-base rounded-lg border border-white/10 relative group mt-2">
+    <svg class="w-5 h-5" viewBox="0 0 24 24">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+    </svg>
+    <span>Sign in with Google</span>
+    <span class="ml-auto text-[10px] uppercase font-bold bg-[#383f4a] text-gray-300 px-2 py-0.5 rounded">Coming Soon</span>
+  </button>
+</div>
+<div class="relative flex items-center py-2">
+<div class="flex-grow border-t border-white/5"></div>
+<span class="flex-shrink mx-4 font-label-caps text-outline">OR CONTINUE WITH</span>
+<div class="flex-grow border-t border-white/5"></div>
+</div>
+<!-- Traditional Login -->
+<form class="space-y-4" id="loginForm" data-login="true">
+<div class="space-y-2">
+<label class="font-label-caps text-outline block ml-1" for="email">WORK EMAIL</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">mail</span>
+<input class="w-full pl-10 pr-4 py-2.5 bg-surface-container-lowest border border-white/10 rounded-lg font-body-base text-on-surface placeholder:text-outline/50 focus:ring-1 focus:ring-primary focus:border-primary transition-all input-glow outline-none" id="email" name="email" placeholder="name@company.com" required="" type="email"/>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between items-center px-1">
+<label class="font-label-caps text-outline block" for="password">PASSWORD</label>
+<a class="text-body-sm text-primary hover:text-primary/80 transition-colors" href="#" data-route="/forgot-password">Forgot?</a>
+</div>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">lock</span>
+<input class="w-full pl-10 pr-4 py-2.5 bg-surface-container-lowest border border-white/10 rounded-lg font-body-base text-on-surface placeholder:text-outline/50 focus:ring-1 focus:ring-primary focus:border-primary transition-all input-glow outline-none" id="password" name="password" placeholder="••••••••" required="" type="password"/>
+</div>
+</div>
+<button class="w-full btn-hover-effect py-2.5 bg-primary hover:bg-primary-container text-on-primary font-body-base font-semibold rounded-lg mt-2 shadow-lg shadow-primary/10" type="submit">
+                            Login with Email
+                        </button>
+</form>
+</div>
+</div>
+<!-- Footer Links -->
+<div class="mt-8 flex flex-col items-center gap-4">
+<p class="text-body-sm text-outline">
+                    Don't have an account? <a class="text-primary hover:underline font-semibold" href="#">Join the waitlist</a>
+</p>
+<div class="flex gap-4 font-label-caps text-outline/60">
+<a class="hover:text-outline transition-colors" href="#">Privacy</a>
+<span>•</span>
+<a class="hover:text-outline transition-colors" href="#">Terms</a>
+<span>•</span>
+<a class="hover:text-outline transition-colors" href="#">Security</a>
+</div>
+</div>
+</div>
+<!-- Collaborative Cursor Effect (Mock) -->
+<div class="absolute pointer-events-none transition-all duration-700 ease-out opacity-0 lg:block hidden" id="collaborator-cursor" style="left: 20%; top: 30%;">
+<div class="w-0.5 h-6 bg-syntax-pink relative">
+<div class="absolute -top-6 left-0 bg-syntax-pink text-[10px] px-1.5 py-0.5 rounded-sm font-code-sm text-white whitespace-nowrap">
+                    sarah_dev
+                </div>
+</div>
+</div>
+</main>

@@ -1,0 +1,287 @@
+<!-- TopNavBar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-gutter h-[48px] bg-surface-container/80 backdrop-blur-md border-b border-white/10">
+<div class="flex items-center gap-8">
+<span class="font-display-lg text-headline-md font-bold text-primary tracking-tight">SYNCSCRIPT</span>
+<nav class="hidden md:flex gap-6">
+<a data-route="/dashboard" class="font-body-base text-body-base text-primary border-b-2 border-primary pb-1 cursor-pointer" href="#">Rooms</a>
+<a data-route="/rooms" class="font-body-base text-body-base text-on-surface-variant hover:text-primary transition-colors duration-200 cursor-pointer" href="#">Sessions</a>
+<a data-route="/history" class="font-body-base text-body-base text-on-surface-variant hover:text-primary transition-colors duration-200 cursor-pointer" href="#">History</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden sm:flex items-center gap-2 px-3 py-1 bg-surface-container-low rounded-lg border border-white/5">
+<span class="material-symbols-outlined text-[18px] text-outline">search</span>
+<span class="text-body-sm text-outline">Search rooms...</span>
+</div>
+<button data-route="/login" class="px-4 py-1.5 border border-primary/40 text-primary font-label-caps text-label-caps rounded-lg hover:bg-primary/10 active:scale-95 transition-all">
+                Login
+            </button>
+<button data-route="/dashboard" class="px-4 py-1.5 bg-primary-container text-on-primary-container font-label-caps text-label-caps rounded-lg hover:brightness-110 active:scale-95 transition-all">
+                Run
+            </button>
+<div class="flex items-center gap-3 ml-2 border-l border-white/10 pl-4">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary">settings</span>
+<span data-route="/login" class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary">account_circle</span>
+</div>
+</div>
+</header>
+<main class="pt-[48px]">
+<!-- Hero Section -->
+<section class="relative min-h-[921px] flex flex-col items-center justify-center px-6 overflow-hidden">
+<!-- Animated Background -->
+
+<div class="relative z-10 max-w-5xl text-center">
+<div class="inline-flex items-center gap-2 px-3 py-1 mb-8 rounded-full bg-primary/10 border border-primary/20">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+<span class="text-label-caps font-label-caps text-primary">Now Live: Version 1.0.4 with Docker Support</span>
+</div>
+<h1 class="font-display-lg text-[64px] md:text-[88px] leading-[0.95] mb-6 tracking-tighter">
+                    Code <span class="font-extrabold italic tracking-tight" style="color:#3B82F6;font-style:italic;text-shadow:0 0 30px rgba(59,130,246,0.6);">Together</span>.<br/>Build Faster.
+                </h1>
+<p class="max-w-2xl mx-auto font-body-base text-headline-md text-on-surface-variant mb-10">
+                    A real-time collaborative code editor with live rooms, chat, code execution, and version history.
+                </p>
+<div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+<button data-auth-route="/dashboard" class="btn-press btn-flashlight w-full sm:w-auto px-10 py-4 bg-[#3B82F6] text-white font-bold rounded-xl hover:scale-105 transition-transform cursor-pointer">
+                        Start Coding
+                    </button>
+<button data-auth-route="/dashboard" class="btn-press w-full sm:w-auto px-10 py-4 bg-[#1e3a8a] border border-[#3B82F6]/40 text-white font-bold rounded-xl hover:bg-[#2563eb] transition-colors cursor-pointer">
+                        Join Room
+                    </button>
+</div>
+</div>
+<!-- Editor Preview Component -->
+<div class="relative w-full max-w-6xl mt-20 mx-auto transform perspective-1000 rotate-x-2">
+<div class="glass-card rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+<div class="flex items-center justify-between px-4 py-3 bg-surface-container-highest/50 border-b border-white/10">
+<div class="flex gap-1.5">
+<div class="w-3 h-3 rounded-full bg-red-500/50"></div>
+<div class="w-3 h-3 rounded-full bg-yellow-500/50"></div>
+<div class="w-3 h-3 rounded-full bg-green-500/50"></div>
+</div>
+<div class="flex items-center gap-2 px-4 py-1 bg-background/50 rounded-md border border-white/5">
+<span class="material-symbols-outlined text-[14px] text-primary">terminal</span>
+<span class="font-code-sm text-code-sm text-on-surface-variant">index.js — syncscript-main</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex -space-x-2">
+<div class="w-6 h-6 rounded-full border-2 border-editor-bg bg-syntax-cyan flex items-center justify-center text-[10px] font-bold text-black">JD</div>
+<div class="w-6 h-6 rounded-full border-2 border-editor-bg bg-syntax-pink flex items-center justify-center text-[10px] font-bold text-black">AS</div>
+<div class="w-6 h-6 rounded-full border-2 border-editor-bg bg-primary flex items-center justify-center text-[10px] font-bold text-black">+3</div>
+</div>
+</div>
+</div>
+<div class="flex h-[400px]">
+<div class="w-12 bg-editor-bg flex flex-col items-center py-4 gap-6 border-r border-white/5">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">description</span>
+<span class="material-symbols-outlined text-outline">search</span>
+<span class="material-symbols-outlined text-outline">account_tree</span>
+<span class="material-symbols-outlined text-outline">bug_report</span>
+</div>
+<div class="flex-1 bg-editor-bg p-6 font-code-base text-code-base">
+<pre class="text-syntax-cyan">import <span class="text-on-surface">{</span> createRoom <span class="text-on-surface">}</span> from <span class="text-syntax-pink">'@syncscript/core'</span>;</pre>
+<pre class="text-on-surface"><span class="text-syntax-pink">const</span> session = <span class="text-syntax-cyan">await</span> createRoom(<span class="text-syntax-pink">'project-x'</span>);</pre>
+<pre class="text-on-surface"></pre>
+<pre class="text-on-surface-variant">// Real-time collaborative logic starts here</pre>
+<pre class="text-syntax-pink">session<span class="text-on-surface">.</span><span class="text-primary">on</span>(<span class="text-syntax-pink">'change'</span>, (delta) =&gt; {</pre>
+<div class="relative inline-block">
+<pre class="text-on-surface pl-4">  console.log(<span class="text-syntax-pink">`Synced: ${delta.id}`</span>);</pre>
+<div class="absolute -right-2 top-0 w-[2px] h-5 bg-syntax-pink">
+<div class="absolute -top-6 left-0 bg-syntax-pink text-black text-[9px] font-bold px-1 py-0.5 rounded-sm whitespace-nowrap">Alice</div>
+</div>
+</div>
+<pre class="text-syntax-pink">});</pre>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Feature Bento Grid -->
+<section class="max-w-7xl mx-auto px-6 py-32">
+<div class="text-center mb-20">
+<h2 class="font-display-lg text-headline-md mb-4">Engineering for collaboration</h2>
+<p class="text-on-surface-variant max-w-xl mx-auto">A powerful suite of tools designed to make remote pair programming feel like being in the same room.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<!-- Large Card -->
+<div class="md:col-span-2 glass-card rounded-2xl p-8 flex flex-col justify-between group overflow-hidden">
+<div>
+<div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-primary">sync_alt</span>
+</div>
+<h3 class="font-headline-md mb-2">Real-time code sync</h3>
+<p class="text-on-surface-variant">Zero-latency synchronization powered by conflict-free replicated data types (CRDTs). Experience seamless multi-user editing without race conditions.</p>
+</div>
+<div class="mt-12 -mb-8 -mx-8 bg-surface-container h-32 flex items-center justify-center overflow-hidden">
+
+</div>
+</div>
+<!-- Small Card -->
+<div class="glass-card rounded-2xl p-8 hover:border-primary/30 transition-colors">
+<div class="w-12 h-12 rounded-xl bg-secondary/10 flex items-center justify-center mb-6">
+<span class="material-symbols-outlined text-secondary">forum</span>
+</div>
+<h3 class="font-headline-md mb-2">Built-in chat</h3>
+<p class="text-on-surface-variant">Discuss implementation details right next to your code. High-context communication for high-velocity teams.</p>
+</div>
+<!-- Feature Item -->
+<div class="glass-card rounded-2xl p-8">
+<div class="w-12 h-12 rounded-xl bg-syntax-cyan/10 flex items-center justify-center mb-6">
+<span class="material-symbols-outlined text-syntax-cyan">terminal</span>
+</div>
+<h3 class="font-headline-md mb-2">Secure code execution</h3>
+<p class="text-on-surface-variant">Run your code in isolated sandboxes. Preview UI changes or backend logic instantly in our integrated environment.</p>
+</div>
+<!-- Large Card -->
+<div class="md:col-span-2 glass-card rounded-2xl p-8 flex flex-col md:flex-row items-center gap-10">
+<div class="flex-1">
+<div class="w-12 h-12 rounded-xl bg-tertiary/10 flex items-center justify-center mb-6">
+<span class="material-symbols-outlined text-tertiary">history</span>
+</div>
+<h3 class="font-headline-md mb-2">Version history</h3>
+<p class="text-on-surface-variant">Never lose a line of code. SyncScript tracks every keystroke, allowing you to rewind time and explore past iterations of your workspace.</p>
+</div>
+<div class="w-full md:w-1/2 h-48 bg-background/50 rounded-xl border border-white/5 p-4 overflow-hidden">
+<div class="space-y-3">
+<div class="flex items-center justify-between text-code-sm">
+<span class="text-on-surface-variant">2 mins ago — Commit "fix: auth"</span>
+<span class="text-primary">Restore</span>
+</div>
+<div class="h-[1px] bg-white/5"></div>
+<div class="flex items-center justify-between text-code-sm opacity-60">
+<span class="text-on-surface-variant">15 mins ago — commit "feat: socket"</span>
+<span class="text-outline">Restore</span>
+</div>
+<div class="h-[1px] bg-white/5"></div>
+<div class="flex items-center justify-between text-code-sm opacity-40">
+<span class="text-on-surface-variant">1 hour ago — Initial Boilerplate</span>
+<span class="text-outline">Restore</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Feature Item -->
+<div class="glass-card rounded-2xl p-8">
+<div class="w-12 h-12 rounded-xl bg-syntax-pink/10 flex items-center justify-center mb-6">
+<span class="material-symbols-outlined text-syntax-pink">groups</span>
+</div>
+<h3 class="font-headline-md mb-2">Room-based sync</h3>
+<p class="text-on-surface-variant">Organize work by projects. Invite teammates via secure links and manage permissions with granular control.</p>
+</div>
+</div>
+</section>
+<!-- Tech Stack / Architecture Section -->
+<section class="bg-surface-container-low/50 py-32 border-y border-white/5">
+<div class="max-w-7xl mx-auto px-6">
+<div class="flex flex-col md:flex-row items-center justify-between gap-12">
+<div class="flex-1">
+<h2 class="font-display-lg text-headline-md mb-6">Built for scale.</h2>
+<p class="text-on-surface-variant font-body-base max-w-md mb-8">
+                            SYNCSCRIPT utilizes a modern distributed architecture to ensure stability, security, and ultra-low latency for global teams.
+                        </p>
+<div class="grid grid-cols-2 gap-4">
+<div class="flex items-center gap-3 p-4 bg-surface-container-highest/30 rounded-xl border border-white/5">
+<div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400">
+<span class="material-symbols-outlined text-[20px]">bolt</span>
+</div>
+<span class="font-label-caps text-label-caps">Redis Caching</span>
+</div>
+<div class="flex items-center gap-3 p-4 bg-surface-container-highest/30 rounded-xl border border-white/5">
+<div class="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center text-green-400">
+<span class="material-symbols-outlined text-[20px]">shield</span>
+</div>
+<span class="font-label-caps text-label-caps">Sandboxed Docker</span>
+</div>
+</div>
+</div>
+<div class="flex-1 grid grid-cols-3 gap-8 justify-items-center opacity-70">
+<div class="flex flex-col items-center gap-2 grayscale hover:grayscale-0 transition-all duration-500 cursor-pointer">
+<div class="w-16 h-16 rounded-full glass-card flex items-center justify-center">
+<img class="w-8 h-8" data-alt="The React logo, a stylized cyan atom with blue orbital paths, rendered in a crisp vector format against a dark UI backdrop." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC9OFtKjsLdUK8LC1NZFZkvVdz1ELwqumhC89UqF6SOsppH-7NcQR6IvTReB5M6-ETVknYswR5EegwsfZOhQnbmiUao_rEzXUv4VPdK-NkHQKkCrCeutTfdayTcu-VTg_Hhr4hUUD8s9koIDoUZ7x2MAYIcktuOV-nVcSWtcX3td4OGzBZJFpF6sOkzb6_x7ZTJak2k7lFCgxFWC6_yJ5yWs1H6aWnWriPnF0RIigeEbDRO7AJjw-7z43tJYHRCu6-89gdcS2uPa-w"/>
+</div>
+<span class="text-label-caps font-label-caps mt-2">React</span>
+</div>
+<div class="flex flex-col items-center gap-2 grayscale hover:grayscale-0 transition-all duration-500 cursor-pointer">
+<div class="w-16 h-16 rounded-full glass-card flex items-center justify-center">
+<span class="material-symbols-outlined text-[32px] text-white">webhook</span>
+</div>
+<span class="text-label-caps font-label-caps mt-2">Socket.io</span>
+</div>
+<div class="flex flex-col items-center gap-2 grayscale hover:grayscale-0 transition-all duration-500 cursor-pointer">
+<div class="w-16 h-16 rounded-full glass-card flex items-center justify-center">
+<img class="w-8 h-8" data-alt="The Redis logo, a red hexagonal prism with white text, signifying speed and reliability in a high-performance developer landing page." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAtj1ZMy5le2SiKpjoy-XLTfUCWnE-e7cnMmBpDFmAz8nI444H_-hCW-mvR_1oYXE0xREoTmaXl14PXFzfT-eemLLfoUEy4Q7lGr9Sm_ihZJYeIzHgdcfSXkeW88b0FbhbwcrTGO_gsfLzNd8hshm2ZHZKaDYtVQbNb5EflrW8AEkkswXs2aCvWv2qwPLOKMF2JdlY1Nzn2qh0naJSJ3lpFc7U1hjDy7vthD2VOL-r2rsYfclcaWgkel9hK_GtFpxl0Kg6PED0UpkQ"/>
+</div>
+<span class="text-label-caps font-label-caps mt-2">Redis</span>
+</div>
+<div class="flex flex-col items-center gap-2 grayscale hover:grayscale-0 transition-all duration-500 cursor-pointer">
+<div class="w-16 h-16 rounded-full glass-card flex items-center justify-center">
+<img class="w-6 h-8" data-alt="The MongoDB leaf logo, rendered in emerald green, standing out against a dark, minimalist tech stack visualization." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBKSFhG37irWKi7eXgF5zXENfdoyHbZ9lEKzh2D6I1nF4Sj_JSvC240NvmJltQCiyyG5p0hwFVfZerPfzQYKJFtmBx8RqRMSXhindleEwj9K322nuBeOQ5C7HO9pi6TNSel9KvpelEaCBfzS0_YhdaWmcaF7MeY3mQ5oVcJaVvBTUiPrrQmiN5526ZA7-P6na-xS2wiMZdrRApi2mciNAagM5TgZcDzdcA7j6eI5Jnhz6RXg3HJyjRSu5I-gU2Ty0iFHPC2uoXVcwY"/>
+</div>
+<span class="text-label-caps font-label-caps mt-2">MongoDB</span>
+</div>
+<div class="flex flex-col items-center gap-2 grayscale hover:grayscale-0 transition-all duration-500 cursor-pointer">
+<div class="w-16 h-16 rounded-full glass-card flex items-center justify-center">
+<img class="w-8 h-8" data-alt="The Docker whale logo, carrying shipping containers, rendered in bright blue against a sleek dark-themed SaaS architectural overview." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBp10AF9AfNb1Y9rvO7ukHY0O8LejDhJgwH25t-fNoTJWi_1l1gGyvirOU8H1DHvs7omL76zRw5N3MTC_xZEA81FaCNoIvas1w3AHbRn7eNknzbc7tRdIQQoG5bujBmknSeH1fKbjQ4JkPD02QKqnfKniDhlgnCupQOlPYdH7jjz6cCiXnWsiUkC1alsbOnDK-AWpYL8CHaswll4STp6Ku3jJMXbGuH-1eAfz62WZgnBwn9hizsSESIbDQd-Tv-ryYER48wQdZjUXg"/>
+</div>
+<span class="text-label-caps font-label-caps mt-2">Docker</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Final CTA -->
+<section class="max-w-7xl mx-auto px-6 py-32 text-center relative">
+<div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+<div class="w-[600px] h-[600px] bg-primary/20 blur-[120px] rounded-full"></div>
+</div>
+<div class="relative z-10">
+<h2 class="font-display-lg text-[48px] md:text-[64px] mb-6">Ready to sync up?</h2>
+<p class="text-on-surface-variant max-w-xl mx-auto mb-10">Join over 10,000 developers already building together on SyncScript.</p>
+<div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+<button data-auth-route="/dashboard" class="btn-press px-12 py-5 bg-primary text-on-primary font-bold rounded-2xl text-headline-md hover:brightness-110 active:scale-95 transition-all cursor-pointer">
+                        Create Your First Room
+                    </button>
+</div>
+<div class="mt-12 text-outline font-label-caps text-label-caps flex items-center justify-center gap-8">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-[16px] text-status-active">check_circle</span> No Credit Card</span>
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-[16px] text-status-active">check_circle</span> Unlimited Rooms</span>
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-[16px] text-status-active">check_circle</span> Local First Sync</span>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="bg-surface-container-lowest py-20 px-6 border-t border-white/5">
+<div class="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-12">
+<div class="col-span-2">
+<span class="font-display-lg text-headline-md font-bold text-primary block mb-6">SYNCSCRIPT</span>
+<p class="text-on-surface-variant max-w-sm font-body-base">The world's most responsive collaborative editor for teams that care about speed and precision.</p>
+</div>
+<div>
+<h4 class="font-label-caps text-label-caps text-white mb-6">Platform</h4>
+<ul class="space-y-4 text-on-surface-variant text-body-base">
+<li><a class="hover:text-primary transition-colors" href="#">Editor</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Collaborate</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Sandbox</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Enterprise</a></li>
+</ul>
+</div>
+<div>
+<h4 class="font-label-caps text-label-caps text-white mb-6">Support</h4>
+<ul class="space-y-4 text-on-surface-variant text-body-base">
+<li><a class="hover:text-primary transition-colors" href="#">Documentation</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">API Reference</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Changelog</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Security</a></li>
+</ul>
+</div>
+</div>
+<div class="max-w-7xl mx-auto mt-20 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6">
+<p class="text-label-caps font-label-caps text-outline">© 2024 SYNCSCRIPT INC. ALL RIGHTS RESERVED.</p>
+<div class="flex gap-6">
+<span class="material-symbols-outlined text-outline hover:text-primary cursor-pointer">language</span>
+<span class="material-symbols-outlined text-outline hover:text-primary cursor-pointer">share</span>
+<span class="material-symbols-outlined text-outline hover:text-primary cursor-pointer">alternate_email</span>
+</div>
+</div>
+</footer>

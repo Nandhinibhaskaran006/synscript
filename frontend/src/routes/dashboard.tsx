@@ -1,0 +1,235 @@
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { AppShell } from "../components/AppShell";
+import api from "../api/axios";
+import { addUserRoom, getUserRooms } from "../lib/user-rooms";
+
+export const Route = createFileRoute("/dashboard")({
+  head: () => ({ meta: [{ title: "SYNCSCRIPT | Developer Dashboard" }] }),
+  component: DashboardPage,
+});
+
+type Room = {
+  roomId: string;
+  name: string;
+  language: string;
+  members: { _id: string; username: string }[];
+  isPrivate: boolean;
+};
+
+type Stats = {
+  totalRooms: number;
+  activeRooms: number;
+  totalUsers: number;
+  activeUsers: number;
+};
+
+function DashboardPage() {
+  const navigate = useNavigate();
+  const [joinId, setJoinId] = useState("");
+  const [search, setSearch] = useState("");
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [roomsRes, statsRes] = await Promise.all([
+          api.get('/api/rooms'),
+          api.get('/api/rooms/stats/system')
+        ]);
+        setRooms(roomsRes.data);
+        setStats(statsRes.data);
+      } catch (error) {
+        console.error("Failed to load dashboard data", error);
+      }
+    }
+    loadData();
+  }, []);
+
+  const enterRoom = async () => {
+    const id = joinId.trim();
+    if (!id) return;
+
+    try {
+      const res = await api.post('/api/rooms/join', { roomId: id });
+      const roomData = res.data;
+
+      if (!getUserRooms().some(r => r.id === roomData.roomId)) {
+        addUserRoom({
+          id: roomData.roomId,
+          name: roomData.name,
+          lang: roomData.language,
+          members: [],
+          capacity: 10,
+          createdAt: Date.now()
+        });
+      }
+
+      localStorage.setItem("syncscript_active_roomId", roomData.roomId);
+      navigate({ to: "/room/$roomId", params: { roomId: roomData.roomId } });
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.message || "Failed to join room");
+    }
+  };
+
+  const filteredRooms = rooms.filter(r => 
+    r.name.toLowerCase().includes(search.toLowerCase()) || 
+    r.language.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <AppShell>
+      <main className="flex flex-col min-h-screen">
+        <div className="p-8 space-y-8">
+          <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="md:col-span-2 relative group overflow-hidden rounded-xl bg-gradient-to-br from-primary/10 via-background to-background border border-primary/20 p-8 flex flex-col justify-between min-h-[220px] transition-all hover:border-primary/40">
+              <div className="absolute -right-12 -top-12 w-64 h-64 bg-[#3B82F6]/5 blur-[80px] rounded-full pointer-events-none"></div>
+              <div className="relative z-10">
+                <h1 className="text-4xl lg:text-5xl font-bold text-[#e1e2eb] tracking-tight leading-tight">Start a fresh<br/>collaborative session.</h1>
+                <p className="text-[#8c909f] mt-2 max-w-md">Instantly spin up a secure, real-time environment with syntax highlighting, shared terminal, and git integration.</p>
+              </div>
+              <div className="relative z-10 flex items-center gap-4 mt-6">
+                <Link to="/rooms/new" className="flex items-center gap-2 bg-[#3B82F6] text-white px-6 py-3 rounded-lg font-bold hover:bg-[#2563eb] transition-all active:scale-95 shadow-xl shadow-[#3B82F6]/30">
+                  <span className="material-symbols-outlined text-[20px]">add_box</span>
+                  Create New Room
+                </Link>
+              </div>
+            </div>
+
+            <div className="bg-[#1d2026]/70 rounded-xl p-8 flex flex-col border border-white/5">
+              <div className="mb-4">
+                <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-[#3B82F6] mb-4">
+                  <span className="material-symbols-outlined">key</span>
+                </div>
+                <h2 className="text-xl font-semibold">Join Room</h2>
+                <p className="text-sm text-[#8c909f] mt-1">Enter a unique invitation code or URL to jump into an existing project.</p>
+              </div>
+              <div className="mt-auto space-y-3">
+                <div className="relative">
+                  <input 
+                    className="w-full bg-[#0B0E14] border border-white/10 rounded-lg py-2.5 px-4 text-sm font-mono focus:ring-1 focus:ring-[#3B82F6] focus:border-[#3B82F6] outline-none transition-all" 
+                    placeholder="Invite code (e.g. ss-49x-z2)" 
+                    value={joinId}
+                    onChange={e => setJoinId(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && enterRoom()}
+                    type="text"
+                  />
+                </div>
+                <button onClick={enterRoom} className="w-full flex items-center justify-center gap-2 bg-[#3B82F6] text-white px-6 py-3 rounded-lg font-bold hover:bg-[#2563eb] transition-all active:scale-95 shadow-xl shadow-[#3B82F6]/30">
+                  <span className="material-symbols-outlined text-[20px]">login</span>
+                  Join Session
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <h3 className="text-2xl font-bold tracking-tight">Active Rooms</h3>
+                <span className="bg-[#25C2A0]/10 text-[#25C2A0] text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-[#25C2A0] rounded-full animate-pulse"></span>
+                  LIVE
+                </span>
+              </div>
+            </div>
+            
+            <div className="mb-4 flex gap-2">
+              <input 
+                placeholder="Search rooms by name or language..." 
+                className="flex-1 bg-[#0B0E14] border border-white/10 rounded-lg py-2 px-4 text-sm focus:ring-1 focus:ring-[#3B82F6] focus:border-[#3B82F6] outline-none transition-all"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filteredRooms.map(room => (
+                <Link key={room.roomId} to="/room/$roomId" params={{ roomId: room.roomId }} className="group relative block rounded-xl p-5 border border-white/5 bg-[#1d2026]/70 backdrop-blur hover:border-[#3B82F6]/30 transition-all duration-300">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex flex-col">
+                      <span className="text-base font-bold text-[#e1e2eb] truncate pr-4">{room.name}</span>
+                      <span className="text-xs text-[#3B82F6] font-mono">{room.language}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[#8c909f] bg-white/5 px-2 py-1 rounded">
+                      <span className="material-symbols-outlined text-[14px]">group</span>
+                      <span className="text-[11px] font-bold">{room.members.length}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/5">
+                    <div className="flex -space-x-1.5">
+                      {room.members.slice(0, 3).map((m, i) => (
+                        <div key={m._id || i} className="w-6 h-6 rounded-full border border-[#10131a] bg-slate-500 overflow-hidden flex items-center justify-center text-[10px] font-bold text-white" title={m.username}>
+                          {m.username.charAt(0).toUpperCase()}
+                        </div>
+                      ))}
+                      {room.members.length > 3 && (
+                        <div className="w-6 h-6 rounded-full border border-[#10131a] bg-white/10 flex items-center justify-center text-[8px] font-bold">
+                          +{room.members.length - 3}
+                        </div>
+                      )}
+                    </div>
+                    <span className="bg-[#3B82F6]/10 group-hover:bg-[#3B82F6] text-[#3B82F6] group-hover:text-white px-4 py-1.5 rounded font-bold text-sm transition-all">Enter</span>
+                  </div>
+                </Link>
+              ))}
+              {filteredRooms.length === 0 && (
+                <div className="col-span-full py-10 text-center text-[#8c909f]">No rooms found.</div>
+              )}
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 bg-[#1d2026]/70 rounded-xl overflow-hidden border border-white/5">
+              <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                <h4 className="font-bold text-[#e1e2eb]">System Health</h4>
+                <span className="text-[11px] text-[#8c909f] font-mono">Real-time stats</span>
+              </div>
+              <div className="p-6 h-40 flex items-end justify-around gap-1 px-8">
+                <div className="flex flex-col items-center justify-end h-full">
+                  <div className="text-3xl font-bold text-[#3B82F6] mb-2">{stats ? stats.totalRooms : '-'}</div>
+                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">Total Rooms</div>
+                </div>
+                <div className="flex flex-col items-center justify-end h-full">
+                  <div className="text-3xl font-bold text-[#25C2A0] mb-2">{stats ? stats.activeRooms : '-'}</div>
+                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">Active Rooms</div>
+                </div>
+                <div className="flex flex-col items-center justify-end h-full">
+                  <div className="text-3xl font-bold text-[#3B82F6] mb-2">{stats ? stats.totalUsers : '-'}</div>
+                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">Total Users</div>
+                </div>
+                <div className="flex flex-col items-center justify-end h-full">
+                  <div className="text-3xl font-bold text-[#25C2A0] mb-2">{stats ? stats.activeUsers : '-'}</div>
+                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">Active Users</div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-[#1d2026]/70 rounded-xl p-6 border border-white/5 flex flex-col">
+              <h4 className="font-bold text-[#e1e2eb] mb-4">Quick Stats</h4>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[#8c909f]">Total Hours Coded</span>
+                  <span className="font-mono text-[#3B82F6]">124.5h</span>
+                </div>
+                <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                  <div className="bg-[#3B82F6] h-full w-3/4 rounded-full"></div>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[#8c909f]">Active Collaborations</span>
+                  <span className="font-mono text-[#3B82F6]">12</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[#8c909f]">Git Commits (MTD)</span>
+                  <span className="font-mono text-[#3B82F6]">284</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </AppShell>
+  );
+}
