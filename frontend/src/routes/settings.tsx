@@ -46,6 +46,7 @@ function SettingsPage() {
   const [prefs, setPrefs] = useState<any>({
     name: "",
     email: "",
+    githubUrl: "",
     theme: "Dark",
     fontSize: 14,
     tabSize: 2,
@@ -64,6 +65,7 @@ function SettingsPage() {
       ...p,
       name: user?.username ?? p.name ?? "",
       email: user?.email ?? p.email ?? "",
+      githubUrl: user?.githubUrl ?? p.githubUrl ?? "",
     }));
   }, [user]);
 
@@ -78,17 +80,20 @@ function SettingsPage() {
       setErrorMsg("");
       
       const newName = prefs.name?.trim();
-      // If display name is changed, update single source of truth via AuthContext
-      if (newName && user && newName !== user.username) {
-        await updateProfile(newName);
-      }
+      const newGithubUrl = prefs.githubUrl?.trim() ?? "";
+
+      // Save username & githubUrl to database via AuthContext
+      await updateProfile({
+        username: newName || user?.username,
+        githubUrl: newGithubUrl,
+      });
 
       localStorage.setItem("syncscript_prefs", JSON.stringify(prefs));
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err: any) {
       console.error("Failed to save settings", err);
-      setErrorMsg(err.response?.data?.message || "Failed to update profile display name");
+      setErrorMsg(err.response?.data?.message || "Failed to update profile");
     } finally {
       setSaving(false);
     }
@@ -121,6 +126,15 @@ function SettingsPage() {
               value={prefs.name} 
               onChange={e => update("name", e.target.value)} 
               placeholder="Your display name"
+            />
+          </Field>
+          <Field label="GitHub Profile URL">
+            <input 
+              type="url"
+              className={inputClass} 
+              value={prefs.githubUrl} 
+              onChange={e => update("githubUrl", e.target.value)} 
+              placeholder="https://github.com/yourusername"
             />
           </Field>
           <Field label="Email">

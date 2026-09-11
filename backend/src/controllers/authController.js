@@ -29,6 +29,7 @@ const register = async (req, res) => {
       _id: user._id,
       username: user.username,
       email: user.email,
+      githubUrl: user.githubUrl || '',
       token: generateToken(user._id),
     });
   } catch (error) {
@@ -57,6 +58,7 @@ const login = async (req, res) => {
       _id: user._id,
       username: user.username,
       email: user.email,
+      githubUrl: user.githubUrl || '',
       token: generateToken(user._id),
     });
   } catch (error) {
@@ -83,25 +85,32 @@ const getMe = async (req, res) => {
 // @access  Private
 const updateMe = async (req, res) => {
   try {
-    const { username } = req.body;
-    if (!username) {
-      return res.status(400).json({ message: 'Username is required' });
-    }
-    
-    // Check if new username is already taken by someone else
-    const existingUser = await User.findOne({ username });
-    if (existingUser && existingUser._id.toString() !== req.user._id.toString()) {
-      return res.status(400).json({ message: 'Username already in use' });
-    }
-    
+    const { username, githubUrl } = req.body;
     const user = await User.findById(req.user._id);
-    user.username = username;
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (username && username !== user.username) {
+      // Check if new username is already taken by someone else
+      const existingUser = await User.findOne({ username });
+      if (existingUser && existingUser._id.toString() !== req.user._id.toString()) {
+        return res.status(400).json({ message: 'Username already in use' });
+      }
+      user.username = username;
+    }
+
+    if (githubUrl !== undefined) {
+      user.githubUrl = githubUrl ? githubUrl.trim() : '';
+    }
+
     await user.save();
-    
+
     res.json({
       _id: user._id,
       username: user.username,
       email: user.email,
+      githubUrl: user.githubUrl || '',
       token: generateToken(user._id),
     });
   } catch (error) {

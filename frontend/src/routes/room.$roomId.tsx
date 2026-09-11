@@ -216,6 +216,62 @@ function RoomPage() {
   const [executedLanguage, setExecutedLanguage] = useState<string | null>(null);
   const [executedFileName, setExecutedFileName] = useState<string | null>(null);
 
+  // ── Collapsible Live Chat State & Messages ───────────────────────────────
+  const [isChatOpen, setIsChatOpen] = useState(true);
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState<Array<{ sender: string; time: string; text: string; color: string }>>([
+    { sender: "System", time: "14:22", text: "Working on the session logic, room environment initialized.", color: "text-violet-400" },
+    { sender: "Alex", time: "14:24", text: "Just pushed the updates for the project files. Check it out in index.js", color: "text-orange-400" },
+    { sender: "Sarah", time: "14:25", text: "Looks good! Testing real-time collaboration.", color: "text-cyan-400" }
+  ]);
+
+  // ── Invite Dropdown State ────────────────────────────────────────────────
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteStatus, setInviteStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const handleSendInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = inviteEmail.trim();
+    if (!trimmed) return;
+    setInviteSending(true);
+    setInviteStatus(null);
+    try {
+      const res = await api.post("/api/invitations/send", {
+        roomId,
+        inviteeEmail: trimmed,
+      });
+      setInviteStatus({ type: "success", message: res.data.message || "Invitation sent!" });
+      setInviteEmail("");
+    } catch (err: any) {
+      setInviteStatus({
+        type: "error",
+        message: err.response?.data?.message || "Failed to send invitation.",
+      });
+    } finally {
+      setInviteSending(false);
+    }
+  };
+
+  const handleSendMessage = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = chatInput.trim();
+    if (!trimmed) return;
+    const now = new Date();
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    setChatMessages(prev => [
+      ...prev,
+      {
+        sender: user?.username || "Me",
+        time: timeStr,
+        text: trimmed,
+        color: "text-primary",
+      }
+    ]);
+    setChatInput("");
+  };
+
   const isDraggingPanelRef = useRef(false);
   const startDragYRef = useRef(0);
   const startHeightRef = useRef(240);
@@ -1315,9 +1371,138 @@ function RoomPage() {
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <AppShell className="bg-[#0B0E14]">
-      <div className="relative">
-        {/* ── Workspace Layout ──────────────────────────────────────────── */}
-        <main className="flex h-screen">
+      <div className="relative flex flex-col h-screen overflow-hidden">
+        {/* ── Dedicated Workspace Top Bar ───────────────────────────────── */}
+        <header className="h-12 bg-[#0e1117] border-b border-white/5 px-4 flex flex-wrap items-center justify-between gap-3 shrink-0 z-30">
+          {/* Left: Room Badge + Language */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/5 border border-white/10 text-xs font-bold text-[#e1e2eb] shadow-sm">
+              <span className="material-symbols-outlined text-[16px] text-[#3B82F6]">meeting_room</span>
+              <span className="truncate max-w-[140px] sm:max-w-[200px] md:max-w-[260px]" title={room?.name || roomId}>
+                {room?.name || roomId}
+              </span>
+            </div>
+            {room?.language && (
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-[#3B82F6]/10 text-[#adc6ff] border border-[#3B82F6]/20 hidden sm:inline-block">
+                {room.language}
+              </span>
+            )}
+          </div>
+
+          {/* Right: Actions (Run Button, Terminal Button, Online Count, Save, Invite, Chat Toggle, Back) */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleRunCode}
+              disabled={isExecuting}
+              title="Run Code (Ctrl+Enter / Cmd+Enter / F5)"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                isExecuting
+                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-wait"
+                  : "bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95 cursor-pointer shadow-emerald-950/40"
+              }`}
+            >
+              <span className={`material-symbols-outlined text-[16px] ${isExecuting ? "animate-spin" : ""}`}>
+                {isExecuting ? "sync" : "play_arrow"}
+              </span>
+              <span>{isExecuting ? "Running..." : "Run"}</span>
+            </button>
+
+            <button
+              onClick={() => setIsBottomPanelOpen((open) => !open)}
+              title={isBottomPanelOpen ? "Hide Terminal / Output Panel" : "Show Terminal / Output Panel"}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                isBottomPanelOpen
+                  ? "bg-[#3B82F6]/20 border-[#3B82F6]/40 text-[#adc6ff]"
+                  : "bg-white/5 border-white/10 text-[#c2c6d6] hover:bg-white/10"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">terminal</span>
+              <span className="hidden sm:inline">Terminal</span>
+            </button>
+
+            <span className="px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs font-semibold text-[#adc6ff] hidden sm:inline-flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              Online: {onlineCount}
+            </span>
+
+            <button
+              onClick={handleSave}
+              className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold flex items-center gap-1.5 transition-colors"
+              title="Save Snapshot"
+            >
+              <span className="material-symbols-outlined text-[16px] text-emerald-400">save</span>
+              <span className="hidden sm:inline">Save</span>
+            </button>
+
+            <div className="relative">
+              <button
+                onClick={() => { setInviteOpen((o) => !o); setInviteStatus(null); }}
+                className="px-3 py-1.5 rounded-lg bg-[#3B82F6] hover:bg-[#2563eb] text-white text-xs font-bold flex items-center gap-1.5 transition-colors"
+                title="Invite Collaborator"
+              >
+                <span className="material-symbols-outlined text-[16px]">person_add</span>
+                <span className="hidden sm:inline">Invite</span>
+              </button>
+              {inviteOpen && (
+                <form
+                  onSubmit={handleSendInvite}
+                  className="absolute top-12 right-0 w-72 p-4 rounded-xl bg-[#0F1219] border border-white/10 shadow-2xl space-y-2 z-50"
+                >
+                  <div className="text-sm font-semibold text-white">Invite collaborator</div>
+                  <input
+                    autoFocus
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="Email address"
+                    className="w-full bg-[#0B0E14] border border-white/10 rounded-md px-3 py-2 text-sm focus:border-[#3B82F6] outline-none text-[#e1e2eb]"
+                  />
+                  {inviteStatus && (
+                    <div className={`text-xs px-2 py-1.5 rounded-md ${
+                      inviteStatus.type === "success"
+                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                        : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                    }`}>
+                      {inviteStatus.message}
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={inviteSending}
+                    className="w-full px-3 py-2 rounded-md bg-[#3B82F6] hover:bg-[#2563eb] disabled:opacity-50 text-white text-sm font-bold flex items-center justify-center gap-2"
+                  >
+                    {inviteSending && <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>}
+                    {inviteSending ? "Sending..." : "Send invite"}
+                  </button>
+                </form>
+              )}
+            </div>
+
+            <button
+              onClick={() => setIsChatOpen((o) => !o)}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-all ${
+                isChatOpen
+                  ? "bg-[#3B82F6]/20 border-[#3B82F6]/40 text-[#adc6ff]"
+                  : "bg-white/5 border-white/10 text-[#c2c6d6] hover:bg-white/10"
+              }`}
+              title={isChatOpen ? "Collapse Live Chat" : "Open Live Chat"}
+            >
+              <span className="material-symbols-outlined text-[16px]">forum</span>
+              <span className="hidden md:inline">Chat</span>
+            </button>
+
+            <Link
+              to="/rooms"
+              className="px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-[#c2c6d6] hover:bg-white/10 transition-colors"
+              title="Back to Rooms"
+            >
+              ←
+            </Link>
+          </div>
+        </header>
+
+        {/* ── Workspace Main Body ───────────────────────────────────────── */}
+        <main className="flex flex-1 min-h-0 overflow-hidden">
 
           {/* ── Left Sidebar: Activity Bar + File Explorer ───────────────── */}
           <aside className="flex w-[260px] flex-shrink-0 bg-sidebar-bg border-r border-white/5">
@@ -1759,61 +1944,7 @@ function RoomPage() {
               )}
             </div>
 
-            {/* Editor header bar — file info + language + modified status + Run button */}
-            {activeFile && (
-              <div className="flex items-center justify-between h-8 px-4 bg-[#0d1117] border-b border-white/5 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <span className={`material-symbols-outlined text-[14px] ${getFileIcon(files[activeFile]?.name || "").color}`}>
-                      {getFileIcon(files[activeFile]?.name || "").icon}
-                    </span>
-                    <span className="text-[12px] text-on-surface font-medium">{activeFile}</span>
-                  </div>
-                  <span className="text-[12px] text-outline">|</span>
-                  <span className="text-[12px] text-outline-variant">{getLanguageLabel(currentLanguage)}</span>
-                  {isCurrentModified && (
-                    <>
-                      <span className="text-[12px] text-outline">|</span>
-                      <div className="flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                        <span className="text-[12px] text-amber-400">Modified</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Editor Actions: Run Code & Toggle Output */}
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleRunCode}
-                    disabled={isExecuting}
-                    title="Run Code (Ctrl+Enter / Cmd+Enter / F5)"
-                    className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition-all shadow-sm ${
-                      isExecuting
-                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-wait"
-                        : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40 active:scale-95 cursor-pointer"
-                    }`}
-                  >
-                    <span className={`material-symbols-outlined text-[15px] ${isExecuting ? "animate-spin" : ""}`}>
-                      {isExecuting ? "sync" : "play_arrow"}
-                    </span>
-                    <span>{isExecuting ? "Running..." : "Run"}</span>
-                  </button>
-
-                  <button
-                    onClick={() => setIsBottomPanelOpen(!isBottomPanelOpen)}
-                    title={isBottomPanelOpen ? "Hide Bottom Panel" : "Show Bottom Panel"}
-                    className={`p-1 rounded text-outline hover:text-on-surface hover:bg-white/5 transition-colors flex items-center ${
-                      isBottomPanelOpen ? "text-primary" : ""
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[16px]">terminal</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Monaco Editor Container - kept permanently mounted to avoid disposed model errors and expensive re-initializations */}
+            {/* Monaco Editor Container - directly below file tabs, maximizing editor workspace */}
             <div className="flex-1 overflow-hidden monaco-editor-wrapper relative" ref={editorContainerRef}>
               <div className={`w-full h-full ${activeFile ? "block" : "hidden"}`}>
                 <Editor
@@ -2083,69 +2214,78 @@ function RoomPage() {
             )}
           </section>
 
-          {/* ── Right Sidebar: Live Chat ───────────────────────────────────── */}
-          <aside className="w-72 bg-sidebar-bg border-l border-white/5 flex flex-col">
-            {/* Top padding so fixed floating action buttons (z-50, top-3) never overlap this header */}
-            <div className="h-10 flex-shrink-0" />
-            <div className="px-4 py-3 flex justify-between items-center border-b border-white/5">
-              <span className="text-label-caps text-outline uppercase">Live Chat</span>
-              <span className="material-symbols-outlined text-[18px] text-outline">forum</span>
-            </div>
-
-            {/* Static chat messages — preserved from original design */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-              <div className="flex flex-col gap-1">
+          {/* ── Right Sidebar: Collapsible Live Chat ────────────────────── */}
+          {isChatOpen ? (
+            <aside className="w-72 bg-sidebar-bg border-l border-white/5 flex flex-col shrink-0 transition-all duration-200">
+              <div className="px-4 py-3 flex justify-between items-center border-b border-white/5 bg-[#0e1117]/50">
                 <div className="flex items-center gap-2">
-                  <span className="text-body-sm font-bold text-violet-400">{collaboratorsList[0]?.name || "System"}</span>
-                  <span className="text-[10px] text-outline-variant">14:22</span>
+                  <span className="material-symbols-outlined text-[18px] text-[#3B82F6]">forum</span>
+                  <span className="text-label-caps text-outline uppercase font-semibold">Live Chat</span>
                 </div>
-                <div className="bg-surface-container-high p-3 rounded-xl rounded-tl-none border border-white/5">
-                  <p className="text-body-sm text-on-surface">
-                    Working on the session logic, room environment initialized.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-body-sm font-bold text-orange-400">{collaboratorsList[1]?.name || "Alex"}</span>
-                  <span className="text-[10px] text-outline-variant">14:24</span>
-                </div>
-                <div className="bg-surface-container-high p-3 rounded-xl rounded-tl-none border border-white/5">
-                  <p className="text-body-sm text-on-surface">
-                    Just pushed the updates for the project files. Check it out in{" "}
-                    <span className="text-primary">index.js</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-body-sm font-bold text-cyan-400">{collaboratorsList[2]?.name || "Sarah"}</span>
-                  <span className="text-[10px] text-outline-variant">14:25</span>
-                </div>
-                <div className="bg-surface-container-high p-3 rounded-xl rounded-tl-none border border-white/5">
-                  <p className="text-body-sm text-on-surface">
-                    Looks good! Testing real-time collaboration.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Chat input */}
-            <div className="p-4 border-t border-white/5">
-              <div className="relative">
-                <textarea
-                  className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg p-3 pr-10 text-body-sm focus:outline-none focus:border-primary transition-colors resize-none custom-scrollbar"
-                  placeholder="Type a message..."
-                  rows={2}
-                />
-                <button className="absolute right-3 bottom-3 text-primary hover:scale-110 active:scale-95 transition-all">
-                  <span className="material-symbols-outlined">send</span>
+                <button
+                  onClick={() => setIsChatOpen(false)}
+                  className="p-1 rounded hover:bg-white/10 text-[#8c909f] hover:text-white transition-colors"
+                  title="Collapse Chat"
+                >
+                  <span className="material-symbols-outlined text-[18px]">chevron_right</span>
                 </button>
               </div>
-            </div>
-          </aside>
+
+              {/* Chat messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-body-sm font-bold ${msg.color}`}>{msg.sender}</span>
+                      <span className="text-[10px] text-outline-variant">{msg.time}</span>
+                    </div>
+                    <div className="bg-surface-container-high p-3 rounded-xl rounded-tl-none border border-white/5">
+                      <p className="text-body-sm text-on-surface break-words">{msg.text}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Chat input */}
+              <form onSubmit={handleSendMessage} className="p-4 border-t border-white/5 bg-[#0e1117]/30">
+                <div className="relative">
+                  <textarea
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg p-3 pr-10 text-body-sm focus:outline-none focus:border-primary transition-colors resize-none custom-scrollbar text-[#e1e2eb]"
+                    placeholder="Type a message (Enter to send)..."
+                    rows={2}
+                  />
+                  <button
+                    type="submit"
+                    className="absolute right-3 bottom-3 text-primary hover:scale-110 active:scale-95 transition-all"
+                    title="Send Message"
+                  >
+                    <span className="material-symbols-outlined">send</span>
+                  </button>
+                </div>
+              </form>
+            </aside>
+          ) : (
+            <aside className="w-11 bg-sidebar-bg border-l border-white/5 flex flex-col items-center py-3 justify-between shrink-0 transition-all duration-200">
+              <button
+                onClick={() => setIsChatOpen(true)}
+                className="p-2 rounded-lg hover:bg-white/10 text-[#adc6ff] hover:text-white transition-all flex flex-col items-center gap-2"
+                title="Open Live Chat"
+              >
+                <span className="material-symbols-outlined text-[20px]">forum</span>
+                <span className="[writing-mode:vertical-lr] text-[10px] uppercase font-mono tracking-widest text-[#8c909f]">
+                  Chat
+                </span>
+              </button>
+            </aside>
+          )}
         </main>
 
         {/* Decorative ambient blobs — pointer-events-none, preserved from original */}
@@ -2223,115 +2363,9 @@ function RoomPage() {
           </div>
         )}
 
-        {/* Floating action buttons + AI Copilot (unchanged sub-components) */}
-        <RoomFloatingActions roomId={roomId} onSave={handleSave} onlineCount={onlineCount} />
         <AICopilot roomId={roomId} />
       </div>
     </AppShell>
-  );
-}
-
-// ── RoomFloatingActions ────────────────────────────────────────────────────
-function RoomFloatingActions({
-  roomId,
-  onSave,
-  onlineCount,
-}: {
-  roomId: string;
-  onSave: () => void;
-  onlineCount: number;
-}) {
-  const [open, setOpen] = useState(false);
-  const [email, setEmail] = useState("");
-  const [sending, setSending] = useState(false);
-  const [inviteStatus, setInviteStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
-
-  const sendInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = email.trim();
-    if (!trimmed) return;
-    setSending(true);
-    setInviteStatus(null);
-    try {
-      const res = await api.post("/api/invitations/send", {
-        roomId,
-        inviteeEmail: trimmed,
-      });
-      setInviteStatus({ type: "success", message: res.data.message || "Invitation sent!" });
-      setEmail("");
-    } catch (err: any) {
-      setInviteStatus({
-        type: "error",
-        message: err.response?.data?.message || "Failed to send invitation.",
-      });
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <div className="fixed top-3 right-4 z-50 flex flex-wrap items-center justify-end gap-2 max-w-[calc(100vw-2rem)]">
-      <span className="px-3 py-1.5 rounded-md bg-[#1d2026] border border-white/10 text-xs font-semibold text-[#adc6ff]">
-        Online: {onlineCount}
-      </span>
-      <Link
-        to="/rooms"
-        className="px-3 py-1.5 rounded-md bg-[#1d2026] border border-white/10 text-xs text-[#c2c6d6] hover:bg-white/10"
-      >
-        ← Rooms
-      </Link>
-      <button
-        onClick={onSave}
-        className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5"
-      >
-        <span className="material-symbols-outlined text-[16px]" style={{ color: "white" }}>
-          save
-        </span>
-        Save
-      </button>
-      <button
-        onClick={() => { setOpen((o) => !o); setInviteStatus(null); }}
-        className="px-3 py-1.5 rounded-md bg-[#3B82F6] hover:bg-[#2563eb] text-white text-xs font-bold flex items-center gap-1.5"
-      >
-        <span className="material-symbols-outlined text-[16px]" style={{ color: "white" }}>
-          person_add
-        </span>
-        Invite
-      </button>
-      {open && (
-        <form
-          onSubmit={sendInvite}
-          className="absolute top-12 right-0 w-72 p-4 rounded-xl bg-[#0F1219] border border-white/10 shadow-2xl space-y-2"
-        >
-          <div className="text-sm font-semibold">Invite collaborator</div>
-          <input
-            autoFocus
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email address"
-            className="w-full bg-[#0B0E14] border border-white/10 rounded-md px-3 py-2 text-sm focus:border-[#3B82F6] outline-none"
-          />
-          {inviteStatus && (
-            <div className={`text-xs px-2 py-1.5 rounded-md ${
-              inviteStatus.type === "success"
-                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
-            }`}>
-              {inviteStatus.message}
-            </div>
-          )}
-          <button
-            type="submit"
-            disabled={sending}
-            className="w-full px-3 py-2 rounded-md bg-[#3B82F6] hover:bg-[#2563eb] disabled:opacity-50 text-white text-sm font-bold flex items-center justify-center gap-2"
-          >
-            {sending && <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>}
-            {sending ? "Sending..." : "Send invite"}
-          </button>
-        </form>
-      )}
-    </div>
   );
 }
 

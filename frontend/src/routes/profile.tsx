@@ -197,19 +197,44 @@ function ProfilePage() {
         <section className="bg-[#1d2026]/70 border border-white/5 rounded-xl p-8 space-y-6">
           <h2 className="text-xl font-bold border-b border-white/5 pb-4">Account Information</h2>
           <div className="grid grid-cols-2 gap-x-12 gap-y-6 text-sm">
-            {[
-              ["Email", user.email],
-              ["Username", user.username],
-              ["Location", displayUser.location],
-              ["GitHub", displayUser.github],
-              ["Member since", joinedDate],
-              ["Plan", displayUser.plan],
-            ].map(([k, v]) => (
-              <div key={k}>
-                <div className="text-[10px] uppercase tracking-wider text-[#8c909f] font-mono mb-1">{k}</div>
-                <div className="text-[#e1e2eb] font-medium">{v}</div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-[#8c909f] font-mono mb-1">Email</div>
+              <div className="text-[#e1e2eb] font-medium">{user.email}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-[#8c909f] font-mono mb-1">Username</div>
+              <div className="text-[#e1e2eb] font-medium">{user.username}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-[#8c909f] font-mono mb-1">Location</div>
+              <div className="text-[#e1e2eb] font-medium">{displayUser.location}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-[#8c909f] font-mono mb-1">GitHub</div>
+              <div className="text-[#e1e2eb] font-medium">
+                {user.githubUrl ? (
+                  <a
+                    href={user.githubUrl.startsWith("http") ? user.githubUrl : `https://${user.githubUrl}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#3B82F6] hover:text-[#adc6ff] transition-colors inline-flex items-center gap-1 underline underline-offset-2 max-w-full truncate"
+                  >
+                    <span className="truncate">{user.githubUrl}</span>
+                    <span className="material-symbols-outlined text-[14px] shrink-0">open_in_new</span>
+                  </a>
+                ) : (
+                  "-"
+                )}
               </div>
-            ))}
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-[#8c909f] font-mono mb-1">Member since</div>
+              <div className="text-[#e1e2eb] font-medium">{joinedDate}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-[#8c909f] font-mono mb-1">Plan</div>
+              <div className="text-[#e1e2eb] font-medium">{displayUser.plan}</div>
+            </div>
           </div>
         </section>
 

@@ -178,24 +178,46 @@ const getUserRooms = async (req, res) => {
   }
 };
 
-// @desc    Get system wide stats
+// @desc    Get dashboard real statistics
 // @route   GET /api/rooms/stats/system
 // @access  Private
 const getSystemStats = async (req, res) => {
   try {
     const User = require('../models/User');
-    const totalRooms = await Room.countDocuments();
-    const totalUsers = await User.countDocuments();
-    
-    // Simplistic metric for active
-    const activeRooms = totalRooms;
-    const activeUsers = totalUsers;
+    const Invitation = require('../models/Invitation');
+    const SessionHistory = require('../models/SessionHistory');
+
+    const userId = req.user?._id;
+    const userEmail = req.user?.email ? req.user.email.toLowerCase() : '';
+
+    const [
+      totalSystemRooms,
+      totalUsers,
+      ownedRooms,
+      allUserRooms,
+      pendingInvitations,
+      savedSessions
+    ] = await Promise.all([
+      Room.countDocuments(),
+      User.countDocuments(),
+      userId ? Room.countDocuments({ owner: userId }) : 0,
+      userId ? Room.countDocuments({ $or: [{ owner: userId }, { members: userId }] }) : 0,
+      userEmail ? Invitation.countDocuments({ inviteeEmail: userEmail, status: 'pending' }) : 0,
+      userId ? SessionHistory.countDocuments({ savedBy: userId }) : 0,
+    ]);
+
+    const collaboratingRooms = Math.max(0, allUserRooms - ownedRooms);
 
     res.json({
-      totalRooms,
-      activeRooms,
+      totalRooms: allUserRooms,
+      ownedRooms,
+      collaboratingRooms,
+      pendingInvitations,
+      savedSessions,
+      totalSystemRooms,
       totalUsers,
-      activeUsers
+      activeRooms: totalSystemRooms,
+      activeUsers: totalUsers,
     });
   } catch (error) {
     console.error('GetSystemStats error:', error.message);

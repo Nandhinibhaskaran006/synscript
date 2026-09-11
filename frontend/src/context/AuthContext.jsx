@@ -25,8 +25,14 @@ export function AuthProvider({ children }) {
         if (token) {
           try {
             const res = await api.get('/api/auth/me');
-            setUser(res.data);
-            window.localStorage.setItem('user', JSON.stringify(res.data));
+            const userData = {
+              _id: res.data._id,
+              username: res.data.username,
+              email: res.data.email,
+              githubUrl: res.data.githubUrl || '',
+            };
+            setUser(userData);
+            window.localStorage.setItem('user', JSON.stringify(userData));
             window.localStorage.setItem('syncscript_loggedin', '1');
           } catch (err) {
             console.error('Failed to load user', err);
@@ -47,7 +53,12 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     const res = await api.post('/api/auth/login', { email, password });
     const data = res.data;
-    const userData = { _id: data._id, username: data.username, email: data.email };
+    const userData = {
+      _id: data._id,
+      username: data.username,
+      email: data.email,
+      githubUrl: data.githubUrl || '',
+    };
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('token', data.token);
       window.localStorage.setItem('user', JSON.stringify(userData));
@@ -60,7 +71,12 @@ export function AuthProvider({ children }) {
   const register = async (username, email, password) => {
     const res = await api.post('/api/auth/register', { username, email, password });
     const data = res.data;
-    const userData = { _id: data._id, username: data.username, email: data.email };
+    const userData = {
+      _id: data._id,
+      username: data.username,
+      email: data.email,
+      githubUrl: data.githubUrl || '',
+    };
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('token', data.token);
       window.localStorage.setItem('user', JSON.stringify(userData));
@@ -79,10 +95,16 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
-  const updateProfile = async (username) => {
-    const res = await api.put('/api/auth/me', { username });
+  const updateProfile = async (updates) => {
+    const payload = typeof updates === 'string' ? { username: updates } : updates;
+    const res = await api.put('/api/auth/me', payload);
     const data = res.data;
-    const userData = { _id: data._id, username: data.username, email: data.email };
+    const userData = {
+      _id: data._id,
+      username: data.username,
+      email: data.email,
+      githubUrl: data.githubUrl || '',
+    };
     if (typeof window !== 'undefined') {
       if (data.token) {
         window.localStorage.setItem('token', data.token);
@@ -96,11 +118,17 @@ export function AuthProvider({ children }) {
   const refreshAuth = async () => {
     try {
       const res = await api.get('/api/auth/me');
+      const userData = {
+        _id: res.data._id,
+        username: res.data.username,
+        email: res.data.email,
+        githubUrl: res.data.githubUrl || '',
+      };
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem('user', JSON.stringify(res.data));
+        window.localStorage.setItem('user', JSON.stringify(userData));
       }
-      setUser(res.data);
-      return res.data;
+      setUser(userData);
+      return userData;
     } catch (err) {
       console.error('Failed to refresh user', err);
     }

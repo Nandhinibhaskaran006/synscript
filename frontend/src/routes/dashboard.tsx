@@ -20,8 +20,13 @@ type Room = {
 
 type Stats = {
   totalRooms: number;
-  activeRooms: number;
+  ownedRooms: number;
+  collaboratingRooms: number;
+  pendingInvitations: number;
+  savedSessions: number;
+  totalSystemRooms: number;
   totalUsers: number;
+  activeRooms: number;
   activeUsers: number;
 };
 
@@ -217,45 +222,46 @@ function DashboardPage() {
             <div className="lg:col-span-2 bg-[#1d2026]/70 rounded-xl overflow-hidden border border-white/5">
               <div className="p-4 border-b border-white/5 flex items-center justify-between">
                 <h4 className="font-bold text-[#e1e2eb]">System Health</h4>
-                <span className="text-[11px] text-[#8c909f] font-mono">Real-time stats</span>
+                <span className="text-[11px] text-[#8c909f] font-mono">Live database stats</span>
               </div>
               <div className="p-6 h-40 flex items-end justify-around gap-1 px-8">
                 <div className="flex flex-col items-center justify-end h-full">
-                  <div className="text-3xl font-bold text-[#3B82F6] mb-2">{stats ? stats.totalRooms : '-'}</div>
-                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">Total Rooms</div>
+                  <div className="text-3xl font-bold text-[#3B82F6] mb-2">{stats ? stats.totalRooms : rooms.length}</div>
+                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">My Rooms</div>
                 </div>
                 <div className="flex flex-col items-center justify-end h-full">
-                  <div className="text-3xl font-bold text-[#25C2A0] mb-2">{stats ? stats.activeRooms : '-'}</div>
-                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">Active Rooms</div>
+                  <div className="text-3xl font-bold text-[#25C2A0] mb-2">{stats ? stats.ownedRooms : '-'}</div>
+                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">Owned</div>
                 </div>
                 <div className="flex flex-col items-center justify-end h-full">
-                  <div className="text-3xl font-bold text-[#3B82F6] mb-2">{stats ? stats.totalUsers : '-'}</div>
+                  <div className="text-3xl font-bold text-[#adc6ff] mb-2">{stats ? stats.collaboratingRooms : '-'}</div>
+                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">Collaborating</div>
+                </div>
+                <div className="flex flex-col items-center justify-end h-full">
+                  <div className="text-3xl font-bold text-[#25C2A0] mb-2">{stats ? stats.totalUsers : '-'}</div>
                   <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">Total Users</div>
-                </div>
-                <div className="flex flex-col items-center justify-end h-full">
-                  <div className="text-3xl font-bold text-[#25C2A0] mb-2">{stats ? stats.activeUsers : '-'}</div>
-                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">Active Users</div>
                 </div>
               </div>
             </div>
 
-            <div className="bg-[#1d2026]/70 rounded-xl p-6 border border-white/5 flex flex-col">
+            <div className="bg-[#1d2026]/70 rounded-xl p-6 border border-white/5 flex flex-col justify-between">
               <h4 className="font-bold text-[#e1e2eb] mb-4">Quick Stats</h4>
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-[#8c909f]">Total Hours Coded</span>
-                  <span className="font-mono text-[#3B82F6]">124.5h</span>
-                </div>
-                <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-[#3B82F6] h-full w-3/4 rounded-full"></div>
+                  <span className="text-sm text-[#8c909f]">Owned Rooms</span>
+                  <span className="font-mono font-bold text-[#3B82F6]">{stats?.ownedRooms ?? 0}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-[#8c909f]">Active Collaborations</span>
-                  <span className="font-mono text-[#3B82F6]">12</span>
+                  <span className="text-sm text-[#8c909f]">Joined Collaborations</span>
+                  <span className="font-mono font-bold text-[#25C2A0]">{stats?.collaboratingRooms ?? 0}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-[#8c909f]">Git Commits (MTD)</span>
-                  <span className="font-mono text-[#3B82F6]">284</span>
+                  <span className="text-sm text-[#8c909f]">Pending Invitations</span>
+                  <span className="font-mono font-bold text-[#adc6ff]">{stats?.pendingInvitations ?? 0}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[#8c909f]">Saved Snapshots</span>
+                  <span className="font-mono font-bold text-amber-400">{stats?.savedSessions ?? 0}</span>
                 </div>
               </div>
             </div>

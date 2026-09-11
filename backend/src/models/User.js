@@ -27,6 +27,11 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    githubUrl: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     resetPasswordToken: String,
     resetPasswordExpire: Date,
   },
