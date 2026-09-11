@@ -2,7 +2,6 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AppShell } from "../components/AppShell";
 import api from "../api/axios";
-import { addUserRoom, getUserRooms } from "../lib/user-rooms";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "SYNCSCRIPT | Developer Dashboard" }] }),
@@ -55,17 +54,6 @@ function DashboardPage() {
       const res = await api.post('/api/rooms/join', { roomId: id });
       const roomData = res.data;
 
-      if (!getUserRooms().some(r => r.id === roomData.roomId)) {
-        addUserRoom({
-          id: roomData.roomId,
-          name: roomData.name,
-          lang: roomData.language,
-          members: [],
-          capacity: 10,
-          createdAt: Date.now()
-        });
-      }
-
       localStorage.setItem("syncscript_active_roomId", roomData.roomId);
       navigate({ to: "/room/$roomId", params: { roomId: roomData.roomId } });
     } catch (err: any) {
@@ -74,8 +62,8 @@ function DashboardPage() {
     }
   };
 
-  const filteredRooms = rooms.filter(r => 
-    r.name.toLowerCase().includes(search.toLowerCase()) || 
+  const filteredRooms = rooms.filter(r =>
+    r.name.toLowerCase().includes(search.toLowerCase()) ||
     r.language.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -87,7 +75,7 @@ function DashboardPage() {
             <div className="md:col-span-2 relative group overflow-hidden rounded-xl bg-gradient-to-br from-primary/10 via-background to-background border border-primary/20 p-8 flex flex-col justify-between min-h-[220px] transition-all hover:border-primary/40">
               <div className="absolute -right-12 -top-12 w-64 h-64 bg-[#3B82F6]/5 blur-[80px] rounded-full pointer-events-none"></div>
               <div className="relative z-10">
-                <h1 className="text-4xl lg:text-5xl font-bold text-[#e1e2eb] tracking-tight leading-tight">Start a fresh<br/>collaborative session.</h1>
+                <h1 className="text-4xl lg:text-5xl font-bold text-[#e1e2eb] tracking-tight leading-tight">Start a fresh<br />collaborative session.</h1>
                 <p className="text-[#8c909f] mt-2 max-w-md">Instantly spin up a secure, real-time environment with syntax highlighting, shared terminal, and git integration.</p>
               </div>
               <div className="relative z-10 flex items-center gap-4 mt-6">
@@ -108,9 +96,9 @@ function DashboardPage() {
               </div>
               <div className="mt-auto space-y-3">
                 <div className="relative">
-                  <input 
-                    className="w-full bg-[#0B0E14] border border-white/10 rounded-lg py-2.5 px-4 text-sm font-mono focus:ring-1 focus:ring-[#3B82F6] focus:border-[#3B82F6] outline-none transition-all" 
-                    placeholder="Invite code (e.g. ss-49x-z2)" 
+                  <input
+                    className="w-full bg-[#0B0E14] border border-white/10 rounded-lg py-2.5 px-4 text-sm font-mono focus:ring-1 focus:ring-[#3B82F6] focus:border-[#3B82F6] outline-none transition-all"
+                    placeholder="Invite code (e.g. ss-49x-z2)"
                     value={joinId}
                     onChange={e => setJoinId(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && enterRoom()}
@@ -119,7 +107,7 @@ function DashboardPage() {
                 </div>
                 <button onClick={enterRoom} className="w-full flex items-center justify-center gap-2 bg-[#3B82F6] text-white px-6 py-3 rounded-lg font-bold hover:bg-[#2563eb] transition-all active:scale-95 shadow-xl shadow-[#3B82F6]/30">
                   <span className="material-symbols-outlined text-[20px]">login</span>
-                  Join Session
+                  Join Room
                 </button>
               </div>
             </div>
@@ -135,16 +123,16 @@ function DashboardPage() {
                 </span>
               </div>
             </div>
-            
+
             <div className="mb-4 flex gap-2">
-              <input 
-                placeholder="Search rooms by name or language..." 
+              <input
+                placeholder="Search rooms by name or language..."
                 className="flex-1 bg-[#0B0E14] border border-white/10 rounded-lg py-2 px-4 text-sm focus:ring-1 focus:ring-[#3B82F6] focus:border-[#3B82F6] outline-none transition-all"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filteredRooms.map(room => (
                 <Link key={room.roomId} to="/room/$roomId" params={{ roomId: room.roomId }} className="group relative block rounded-xl p-5 border border-white/5 bg-[#1d2026]/70 backdrop-blur hover:border-[#3B82F6]/30 transition-all duration-300">
@@ -206,7 +194,7 @@ function DashboardPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-[#1d2026]/70 rounded-xl p-6 border border-white/5 flex flex-col">
               <h4 className="font-bold text-[#e1e2eb] mb-4">Quick Stats</h4>
               <div className="space-y-4">

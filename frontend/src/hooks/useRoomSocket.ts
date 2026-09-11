@@ -2,79 +2,173 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
-const CODE_CHANGE_DEBOUNCE_MS = 300;
 
 type UseRoomSocketOptions = {
   roomId: string;
   username: string;
   enabled?: boolean;
-  /** Legacy: called when receive-code-change fires (single shared doc) */
-  onCodeChange?: (code: string) => void;
   /** Per-file update: called when CODE_UPDATE fires */
   onFileChange?: (payload: { filePath: string; content: string }) => void;
   /** Live user count update */
   onUsersChange?: (count: number) => void;
   onRoomJoined?: (payload: { roomId: string }) => void;
   onError?: (message: string) => void;
+  /** File/folder operations */
+  onFileCreated?: (payload: { file: { path: string; name: string; type: string; content?: string } }) => void;
+  onFileRenamed?: (payload: { oldPath: string; newPath: string; newName: string }) => void;
+  onFileDeleted?: (payload: { path: string }) => void;
+  onFolderCreated?: (payload: { folder: { path: string; name: string; type: string } }) => void;
+  onFolderRenamed?: (payload: { oldPath: string; newPath: string; newName: string }) => void;
+  onFolderDeleted?: (payload: { path: string }) => void;
+  /** Presence events */
+  onUserJoined?: (payload: { userId: string; username: string }) => void;
+  onUserLeft?: (payload: { userId: string; username: string }) => void;
+  onOnlineUsers?: (users: { userId: string; username: string }[]) => void;
+  /** Cursor events */
+  onCursorUpdate?: (payload: { userId: string; filePath: string; position: { lineNumber: number; column: number } }) => void;
 };
 
 export function useRoomSocket({
   roomId,
   username,
   enabled = true,
-  onCodeChange,
   onFileChange,
   onUsersChange,
   onRoomJoined,
   onError,
+  onFileCreated,
+  onFileRenamed,
+  onFileDeleted,
+  onFolderCreated,
+  onFolderRenamed,
+  onFolderDeleted,
+  onUserJoined,
+  onUserLeft,
+  onOnlineUsers,
+  onCursorUpdate,
 }: UseRoomSocketOptions) {
   const socketRef = useRef<Socket | null>(null);
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [onlineCount, setOnlineCount] = useState(1);
+  const [onlineCount, setOnlineCount] = useState(0);
 
-  const onCodeChangeRef = useRef(onCodeChange);
   const onFileChangeRef = useRef(onFileChange);
   const onUsersChangeRef = useRef(onUsersChange);
   const onRoomJoinedRef = useRef(onRoomJoined);
   const onErrorRef = useRef(onError);
+  const onFileCreatedRef = useRef(onFileCreated);
+  const onFileRenamedRef = useRef(onFileRenamed);
+  const onFileDeletedRef = useRef(onFileDeleted);
+  const onFolderCreatedRef = useRef(onFolderCreated);
+  const onFolderRenamedRef = useRef(onFolderRenamed);
+  const onFolderDeletedRef = useRef(onFolderDeleted);
+  const onUserJoinedRef = useRef(onUserJoined);
+  const onUserLeftRef = useRef(onUserLeft);
+  const onOnlineUsersRef = useRef(onOnlineUsers);
+  const onCursorUpdateRef = useRef(onCursorUpdate);
 
-  onCodeChangeRef.current = onCodeChange;
   onFileChangeRef.current = onFileChange;
   onUsersChangeRef.current = onUsersChange;
   onRoomJoinedRef.current = onRoomJoined;
   onErrorRef.current = onError;
+  onFileCreatedRef.current = onFileCreated;
+  onFileRenamedRef.current = onFileRenamed;
+  onFileDeletedRef.current = onFileDeleted;
+  onFolderCreatedRef.current = onFolderCreated;
+  onFolderRenamedRef.current = onFolderRenamed;
+  onFolderDeletedRef.current = onFolderDeleted;
+  onUserJoinedRef.current = onUserJoined;
+  onUserLeftRef.current = onUserLeft;
+  onOnlineUsersRef.current = onOnlineUsers;
+  onCursorUpdateRef.current = onCursorUpdate;
 
-  /** Emit per-file CODE_CHANGE (debounced) */
+  /** Emit per-file CODE_CHANGE from local edits only */
   const emitFileChange = useCallback(
     (filePath: string, content: string) => {
       const socket = socketRef.current;
       if (!socket?.connected) return;
 
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-
-      debounceTimerRef.current = setTimeout(() => {
-        console.log("[Socket] CODE_CHANGE emitted", { filePath, contentLen: content.length });
-        socket.emit("CODE_CHANGE", { roomId, filePath, content });
-      }, CODE_CHANGE_DEBOUNCE_MS);
+      console.log("CODE_CHANGE", { roomId, filePath, contentLen: content.length });
+      socket.emit("CODE_CHANGE", { roomId, filePath, content });
     },
     [roomId],
   );
 
-  /** Legacy: emit code-change for single shared doc (kept for backward compat) */
-  const emitCodeChange = useCallback(
-    (code: string) => {
+  /** Emit file/folder operations */
+  const emitFileCreated = useCallback(
+    (file: { path: string; name: string; type: string; content?: string }) => {
       const socket = socketRef.current;
       if (!socket?.connected) return;
+      console.log("FILE_CREATED", { roomId, file });
+      socket.emit("FILE_CREATED", { roomId, file });
+    },
+    [roomId],
+  );
 
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
+  const emitFileRenamed = useCallback(
+    (oldPath: string, newPath: string, newName: string) => {
+      const socket = socketRef.current;
+      if (!socket?.connected) return;
+      console.log("FILE_RENAMED", { roomId, oldPath, newPath, newName });
+      socket.emit("FILE_RENAMED", { roomId, oldPath, newPath, newName });
+    },
+    [roomId],
+  );
+
+  const emitFileDeleted = useCallback(
+    (path: string) => {
+      const socket = socketRef.current;
+      if (!socket?.connected) return;
+      console.log("FILE_DELETED", { roomId, path });
+      socket.emit("FILE_DELETED", { roomId, path });
+    },
+    [roomId],
+  );
+
+  const emitFolderCreated = useCallback(
+    (folder: { path: string; name: string; type: string }) => {
+      const socket = socketRef.current;
+      if (!socket?.connected) return;
+      console.log("FOLDER_CREATED", { roomId, folder });
+      socket.emit("FOLDER_CREATED", { roomId, folder });
+    },
+    [roomId],
+  );
+
+  const emitFolderRenamed = useCallback(
+    (oldPath: string, newPath: string, newName: string) => {
+      const socket = socketRef.current;
+      if (!socket?.connected) return;
+      console.log("FOLDER_RENAMED", { roomId, oldPath, newPath, newName });
+      socket.emit("FOLDER_RENAMED", { roomId, oldPath, newPath, newName });
+    },
+    [roomId],
+  );
+
+  const emitFolderDeleted = useCallback(
+    (path: string) => {
+      const socket = socketRef.current;
+      if (!socket?.connected) return;
+      console.log("FOLDER_DELETED", { roomId, path });
+      socket.emit("FOLDER_DELETED", { roomId, path });
+    },
+    [roomId],
+  );
+
+  // Throttled cursor emit
+  const cursorThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const emitCursorMove = useCallback(
+    (filePath: string, position: { lineNumber: number; column: number }) => {
+      const socket = socketRef.current;
+      if (!socket?.connected) return;
+      
+      if (cursorThrottleRef.current) {
+        clearTimeout(cursorThrottleRef.current);
       }
-
-      debounceTimerRef.current = setTimeout(() => {
-        socket.emit("code-change", { roomId, code });
-      }, CODE_CHANGE_DEBOUNCE_MS);
+      
+      cursorThrottleRef.current = setTimeout(() => {
+        console.log("CURSOR_MOVE", { roomId, filePath, position });
+        socket.emit("CURSOR_MOVE", { roomId, filePath, position });
+        cursorThrottleRef.current = null;
+      }, 100);
     },
     [roomId],
   );
@@ -87,36 +181,30 @@ export function useRoomSocket({
     if (!token) return;
 
     const socket = io(SOCKET_URL, {
-      auth: { token },
+      auth: { token, username },
       autoConnect: true,
     });
     socketRef.current = socket;
 
     const handleConnect = () => {
-      console.log("[Socket] JOIN_ROOM →", roomId);
-      socket.emit("JOIN_ROOM", { roomId, username });
-      // Also emit legacy join-room for backward compat
-      socket.emit("join-room", { roomId, username });
-    };
-
-    const handleReceiveCodeChange = ({ code }: { code: string }) => {
-      onCodeChangeRef.current?.(code ?? "");
+      console.log("JOIN_ROOM", roomId);
+      socket.emit("JOIN_ROOM", roomId);
     };
 
     const handleCodeUpdate = ({ filePath, content }: { filePath: string; content: string }) => {
-      console.log("[Socket] CODE_UPDATE received", { filePath, contentLen: content.length });
+      console.log("CODE_UPDATE", { filePath, contentLen: content?.length ?? 0 });
       onFileChangeRef.current?.({ filePath, content });
     };
 
     const handleRoomUsers = (users: { userId: string; username: string }[]) => {
       const count = users.length;
-      console.log("[Socket] room-users →", count, "online");
       setOnlineCount(count);
       onUsersChangeRef.current?.(count);
+      // Also update the online users set so presence dots work
+      onOnlineUsersRef.current?.(users);
     };
 
     const handleOnlineCount = ({ count }: { count: number }) => {
-      console.log("[Socket] ONLINE_COUNT →", count);
       setOnlineCount(count);
       onUsersChangeRef.current?.(count);
     };
@@ -125,8 +213,59 @@ export function useRoomSocket({
       onRoomJoinedRef.current?.(payload);
     };
 
+    const handleFileCreated = (payload: { file: { path: string; name: string; type: string; content?: string } }) => {
+      console.log("FILE_CREATED received", payload);
+      onFileCreatedRef.current?.(payload);
+    };
+
+    const handleFileRenamed = (payload: { oldPath: string; newPath: string; newName: string }) => {
+      console.log("FILE_RENAMED received", payload);
+      onFileRenamedRef.current?.(payload);
+    };
+
+    const handleFileDeleted = (payload: { path: string }) => {
+      console.log("FILE_DELETED received", payload);
+      onFileDeletedRef.current?.(payload);
+    };
+
+    const handleFolderCreated = (payload: { folder: { path: string; name: string; type: string } }) => {
+      console.log("FOLDER_CREATED received", payload);
+      onFolderCreatedRef.current?.(payload);
+    };
+
+    const handleFolderRenamed = (payload: { oldPath: string; newPath: string; newName: string }) => {
+      console.log("FOLDER_RENAMED received", payload);
+      onFolderRenamedRef.current?.(payload);
+    };
+
+    const handleFolderDeleted = (payload: { path: string }) => {
+      console.log("FOLDER_DELETED received", payload);
+      onFolderDeletedRef.current?.(payload);
+    };
+
+    const handleUserJoined = (payload: { userId: string; username: string }) => {
+      console.log("🔔 USER_JOINED received", payload);
+      onUserJoinedRef.current?.(payload);
+    };
+
+    const handleUserLeft = (payload: { userId: string; username: string }) => {
+      console.log("🔔 USER_LEFT received", payload);
+      onUserLeftRef.current?.(payload);
+    };
+
+    const handleOnlineUsers = (users: { userId: string; username: string }[]) => {
+      console.log("🔔 ONLINE_USERS received", users);
+      onOnlineUsersRef.current?.(users);
+    };
+
+    const handleCursorUpdate = (payload: { userId: string; filePath: string; position: { lineNumber: number; column: number } }) => {
+      // console.log("🔔 CURSOR_UPDATE received", payload);
+      // console.log("🔔 onCursorUpdateRef.current exists:", !!onCursorUpdateRef.current);
+      onCursorUpdateRef.current?.(payload);
+    };
+
     const handleDisconnect = () => {
-      console.log("[Socket] DISCONNECT");
+      console.log("DISCONNECT");
     };
 
     const handleError = ({ message }: { message: string }) => {
@@ -134,27 +273,41 @@ export function useRoomSocket({
     };
 
     socket.on("connect", handleConnect);
-    socket.on("receive-code-change", handleReceiveCodeChange);
     socket.on("CODE_UPDATE", handleCodeUpdate);
     socket.on("room-users", handleRoomUsers);
     socket.on("ONLINE_COUNT", handleOnlineCount);
     socket.on("room-joined", handleRoomJoined);
+    socket.on("FILE_CREATED", handleFileCreated);
+    socket.on("FILE_RENAMED", handleFileRenamed);
+    socket.on("FILE_DELETED", handleFileDeleted);
+    socket.on("FOLDER_CREATED", handleFolderCreated);
+    socket.on("FOLDER_RENAMED", handleFolderRenamed);
+    socket.on("FOLDER_DELETED", handleFolderDeleted);
+    socket.on("USER_JOINED", handleUserJoined);
+    socket.on("USER_LEFT", handleUserLeft);
+    socket.on("ONLINE_USERS", handleOnlineUsers);
+    socket.on("CURSOR_UPDATE", handleCursorUpdate);
     socket.on("disconnect", handleDisconnect);
     socket.on("error", handleError);
 
     return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
-      }
-      console.log("[Socket] LEAVE_ROOM cleanup");
-      socket.emit("LEAVE_ROOM", { roomId });
+      console.log("LEAVE_ROOM", roomId);
+      socket.emit("LEAVE_ROOM", roomId);
       socket.off("connect", handleConnect);
-      socket.off("receive-code-change", handleReceiveCodeChange);
       socket.off("CODE_UPDATE", handleCodeUpdate);
       socket.off("room-users", handleRoomUsers);
       socket.off("ONLINE_COUNT", handleOnlineCount);
       socket.off("room-joined", handleRoomJoined);
+      socket.off("FILE_CREATED", handleFileCreated);
+      socket.off("FILE_RENAMED", handleFileRenamed);
+      socket.off("FILE_DELETED", handleFileDeleted);
+      socket.off("FOLDER_CREATED", handleFolderCreated);
+      socket.off("FOLDER_RENAMED", handleFolderRenamed);
+      socket.off("FOLDER_DELETED", handleFolderDeleted);
+      socket.off("USER_JOINED", handleUserJoined);
+      socket.off("USER_LEFT", handleUserLeft);
+      socket.off("ONLINE_USERS", handleOnlineUsers);
+      socket.off("CURSOR_UPDATE", handleCursorUpdate);
       socket.off("disconnect", handleDisconnect);
       socket.off("error", handleError);
       socket.disconnect();
@@ -162,5 +315,15 @@ export function useRoomSocket({
     };
   }, [roomId, username, enabled]);
 
-  return { emitCodeChange, emitFileChange, onlineCount };
+  return { 
+    emitFileChange, 
+    emitFileCreated,
+    emitFileRenamed,
+    emitFileDeleted,
+    emitFolderCreated,
+    emitFolderRenamed,
+    emitFolderDeleted,
+    emitCursorMove,
+    onlineCount 
+  };
 }

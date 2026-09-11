@@ -32,6 +32,15 @@ const roomSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    files: [
+      {
+        path: { type: String, required: true },
+        name: { type: String, required: true },
+        type: { type: String, enum: ['file', 'folder'], default: 'file' },
+        content: { type: String, default: '' },
+        isOpen: { type: Boolean, default: true },
+      },
+    ],
     isPrivate: {
       type: Boolean,
       default: false,

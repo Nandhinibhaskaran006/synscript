@@ -1,91 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { isLoggedIn, setRedirect } from "@/lib/auth";
-import { getUserRooms } from "@/lib/user-rooms";
 import { AppShell } from "../components/AppShell";
+import api from "../api/axios";
 
 type Room = {
-  id: string;
+  roomId: string;
   name: string;
-  lang: string;
-  langColor: string;
-  members: string[];
-  capacity: number;
-  active: boolean;
-  snippet: { text: string; cls: string }[];
+  language: string;
+  members: { _id: string; username: string }[];
+  isPrivate: boolean;
+  createdAt: string;
 };
-
-const ROOMS: Room[] = [
-  {
-    id: "auth-microservice",
-    name: "auth-microservice",
-    lang: "TypeScript",
-    langColor: "text-syntax-pink",
-    members: ["Sarah", "Alex", "Mia"],
-    capacity: 5,
-    active: true,
-    snippet: [
-      { text: "async function verify() {", cls: "text-syntax-cyan" },
-      { text: "  const token = req.headers;", cls: "text-on-surface-variant" },
-      { text: "  // Validate JWT...", cls: "text-status-active" },
-    ],
-  },
-  {
-    id: "data-pipeline-v3",
-    name: "data-pipeline-v3",
-    lang: "Python",
-    langColor: "text-status-warning",
-    members: ["Jordan", "Priya"],
-    capacity: 5,
-    active: true,
-    snippet: [
-      { text: "def process_batch(data):", cls: "text-syntax-pink" },
-      { text: "  for item in data:", cls: "text-on-surface-variant" },
-      { text: "    yield transform(item)", cls: "text-syntax-cyan" },
-    ],
-  },
-  {
-    id: "frontend-revamp",
-    name: "frontend-revamp",
-    lang: "React",
-    langColor: "text-syntax-cyan",
-    members: ["Mia", "Devon", "Sarah", "Leo", "Kai"],
-    capacity: 8,
-    active: true,
-    snippet: [
-      { text: "const Dashboard = () => {", cls: "text-syntax-cyan" },
-      { text: "  return (", cls: "text-syntax-pink" },
-      { text: '    <div className="grid" />', cls: "text-on-surface-variant" },
-    ],
-  },
-  {
-    id: "go-scraper",
-    name: "go-scraper",
-    lang: "Golang",
-    langColor: "text-primary",
-    members: ["Devon"],
-    capacity: 3,
-    active: false,
-    snippet: [
-      { text: "func main() {", cls: "text-syntax-pink" },
-      { text: "  c := colly.NewCollector()", cls: "text-on-surface-variant" },
-      { text: '  c.OnHTML("a", ...)', cls: "text-syntax-cyan" },
-    ],
-  },
-  {
-    id: "ss-49x-z2",
-    name: "playground",
-    lang: "JavaScript",
-    langColor: "text-status-warning",
-    members: ["Alex"],
-    capacity: 4,
-    active: false,
-    snippet: [
-      { text: "// scratch pad", cls: "text-status-active" },
-      { text: "console.log('hi');", cls: "text-on-surface-variant" },
-    ],
-  },
-];
 
 export const Route = createFileRoute("/rooms/")({
   head: () => ({ meta: [{ title: "SYNCSCRIPT | My Rooms" }] }),
@@ -100,22 +26,28 @@ function RoomsPage() {
     }
   }, []);
 
-  const [userRooms, setUserRooms] = useState<Room[]>([]);
-  useEffect(() => {
-    const ur = getUserRooms().map((r): Room => ({
-      id: r.id, name: r.name, lang: r.lang, langColor: "text-syntax-cyan",
-      members: r.members, capacity: r.capacity, active: true,
-      snippet: [
-        { text: `// ${r.name}`, cls: "text-status-active" },
-        { text: `// language: ${r.lang}`, cls: "text-on-surface-variant" },
-        { text: "// start coding...", cls: "text-syntax-cyan" },
-      ],
-    }));
-    setUserRooms(ur);
-  }, []);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const active = [...userRooms, ...ROOMS.filter((r) => r.active)];
-  const all = [...userRooms, ...ROOMS];
+  useEffect(() => {
+    if (!isLoggedIn()) {
+      setRedirect("/rooms");
+      window.location.assign("/login");
+      return;
+    }
+
+    async function loadRooms() {
+      try {
+        const res = await api.get('/api/rooms');
+        setRooms(res.data);
+      } catch (error) {
+        console.error("Failed to load rooms", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadRooms();
+  }, []);
 
   return (
     <AppShell>
@@ -136,26 +68,35 @@ function RoomsPage() {
         </header>
 
         <section>
-          <div className="flex items-center gap-3 mb-4">
-            <h2 className="text-lg font-bold">Active Rooms</h2>
-            <span className="bg-[#25C2A0]/10 text-[#25C2A0] text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-[#25C2A0] rounded-full animate-pulse"></span>LIVE
-            </span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {active.map((r) => (
-              <RoomCard key={r.id} room={r} />
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-lg font-bold mb-4">All Rooms</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {all.map((r) => (
-              <RoomCard key={r.id} room={r} />
-            ))}
-          </div>
+          {loading ? (
+            <div className="text-center py-10 text-[#8c909f]">Loading rooms...</div>
+          ) : rooms.length === 0 ? (
+            <div className="text-center py-10 text-[#8c909f]">
+              <p className="mb-4">No rooms found. Create a room to get started!</p>
+              <Link
+                to="/rooms/new"
+                className="inline-flex items-center gap-2 bg-[#3B82F6] text-white px-5 py-2.5 rounded-lg font-bold transition-all shadow-lg shadow-[#3B82F6]/30 hover:bg-[#2563eb]"
+              >
+                <span className="material-symbols-outlined text-[20px]">add_box</span>
+                Create New Room
+              </Link>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 mb-4">
+                <h2 className="text-lg font-bold">My Rooms</h2>
+                <span className="bg-[#25C2A0]/10 text-[#25C2A0] text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-[#25C2A0] rounded-full animate-pulse"></span>
+                  {rooms.length}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {rooms.map((r) => (
+                  <RoomCard key={r.roomId} room={r} />
+                ))}
+              </div>
+            </>
+          )}
         </section>
       </main>
     </AppShell>
@@ -163,37 +104,52 @@ function RoomsPage() {
 }
 
 function RoomCard({ room }: { room: Room }) {
+  const langColors: Record<string, string> = {
+    javascript: "text-status-warning",
+    typescript: "text-syntax-pink",
+    python: "text-status-warning",
+    java: "text-syntax-cyan",
+    go: "text-primary",
+    rust: "text-syntax-pink",
+    "c++": "text-syntax-cyan",
+  };
+  const langColor = langColors[room.language.toLowerCase()] || "text-syntax-cyan";
+
   return (
     <Link
       to="/room/$roomId"
-      params={{ roomId: room.id }}
-      className="group relative block rounded-xl p-5 border border-white/5 bg-[#1d2026]/70 backdrop-blur hover:border-[#4d8eff] hover:bg-[#4d8eff]/5 transition-all duration-200 active:scale-[0.98]"
+      params={{ roomId: room.roomId }}
+      className="group relative block rounded-xl p-5 border border-white/5 bg-[#1d2026]/70 backdrop-blur hover:border-[#3B82F6]/30 transition-all duration-200 active:scale-[0.98]"
     >
       <div className="flex justify-between items-start mb-4">
         <div className="flex flex-col">
           <span className="font-bold text-[#e1e2eb] truncate pr-4">{room.name}</span>
-          <span className={`text-[11px] font-mono ${room.langColor}`}>{room.lang}</span>
+          <span className={`text-[11px] font-mono ${langColor}`}>{room.language}</span>
         </div>
         <div className="flex items-center gap-1.5 text-[#8c909f] bg-white/5 px-2 py-1 rounded">
           <span className="material-symbols-outlined text-[14px]">group</span>
-          <span className="text-[11px] font-bold">{room.members.length}/{room.capacity}</span>
+          <span className="text-[11px] font-bold">{room.members.length}</span>
         </div>
       </div>
       <div className="h-24 w-full rounded bg-[#0B0E14] border border-white/5 p-3 overflow-hidden mb-4 font-mono text-[11px] space-y-1 opacity-80">
-        {room.snippet.map((s, i) => (
-          <div key={i} className={s.cls}>{s.text}</div>
-        ))}
+        <div className="text-status-active">// {room.name}</div>
+        <div className="text-on-surface-variant">// language: {room.language}</div>
+        <div className="text-syntax-cyan">// start coding...</div>
       </div>
       <div className="flex items-center justify-between">
-        <div className="flex flex-wrap gap-1">
-          {room.members.slice(0, 4).map((m) => (
-            <span key={m} className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-[#c2c6d6] border border-white/10">{m}</span>
+        <div className="flex -space-x-1.5">
+          {room.members.slice(0, 3).map((m, i) => (
+            <div key={m._id || i} className="w-6 h-6 rounded-full border border-[#10131a] bg-slate-500 overflow-hidden flex items-center justify-center text-[10px] font-bold text-white" title={m.username}>
+              {m.username.charAt(0).toUpperCase()}
+            </div>
           ))}
-          {room.members.length > 4 && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-[#8c909f]">+{room.members.length - 4}</span>
+          {room.members.length > 3 && (
+            <div className="w-6 h-6 rounded-full border border-[#10131a] bg-white/10 flex items-center justify-center text-[8px] font-bold">
+              +{room.members.length - 3}
+            </div>
           )}
         </div>
-        <span className="bg-[#adc6ff]/10 group-hover:bg-[#4d8eff] text-[#adc6ff] group-hover:text-white px-3 py-1.5 rounded font-bold text-xs transition-all">
+        <span className="bg-[#3B82F6]/10 group-hover:bg-[#3B82F6] text-[#3B82F6] group-hover:text-white px-3 py-1.5 rounded font-bold text-xs transition-all">
           Enter →
         </span>
       </div>

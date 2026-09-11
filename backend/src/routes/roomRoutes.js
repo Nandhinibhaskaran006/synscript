@@ -8,6 +8,7 @@ const {
   getVersionHistory,
   getUserRooms,
   getSystemStats,
+  saveRoomFiles,
 } = require('../controllers/roomController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -28,6 +29,9 @@ router.get('/', getUserRooms);
 
 // @route   GET /api/rooms/:roomId
 router.get('/:roomId', getRoomDetails);
+
+// @route   PUT /api/rooms/:roomId/files
+router.put('/:roomId/files', saveRoomFiles);
 
 // @route   POST /api/rooms/:roomId/save
 router.post('/:roomId/save', saveSession);

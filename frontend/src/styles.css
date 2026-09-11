@@ -214,3 +214,11 @@ button:focus-visible, [data-route]:focus-visible, [data-auth-route]:focus-visibl
   transition: opacity 0.1s ease;
 }
 
+/* Remote cursor decorations */
+.remote-cursor {
+  border-left: 2px solid;
+  padding-left: 0;
+  margin-left: -1px;
+  pointer-events: none;
+}
+

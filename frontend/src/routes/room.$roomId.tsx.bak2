@@ -7,7 +7,6 @@ import { useAuth } from "../context/AuthContext";
 import { useRoomSocket } from "../hooks/useRoomSocket";
 import Editor, { type Monaco } from "@monaco-editor/react";
 import type { editor, IDisposable } from "monaco-editor";
-import { defineCustomTheme } from "../lib/monaco-theme";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type FileNode = {
@@ -89,17 +88,9 @@ const EDITOR_OPTIONS: editor.IStandaloneEditorConstructionOptions = {
   // Brackets & quotes
   autoClosingBrackets: "always",
   autoClosingQuotes: "always",
-  bracketPairColorization: {
-    enabled: false,
-  },
-  guides: {
-    indentation: false,
-    highlightActiveIndentation: false,
-    bracketPairs: false,
-  },
-  matchBrackets: "never",
-  occurrencesHighlight: "off",
-  selectionHighlight: false,
+  bracketPairColorization: { enabled: true },
+  guides: { bracketPairs: true },
+  matchBrackets: "always",
   // Formatting
   formatOnPaste: true,
   formatOnType: true,
@@ -107,17 +98,79 @@ const EDITOR_OPTIONS: editor.IStandaloneEditorConstructionOptions = {
   folding: true,
   foldingStrategy: "indentation",
   // Hover & errors
-  hover: { enabled: "on" as const },
-  renderValidationDecorations: "on",
+  hover: { enabled: true as const },
+  renderValidationDecorations: "on" as const,
   // Visual polish
   cursorBlinking: "smooth",
   cursorSmoothCaretAnimation: "on",
   smoothScrolling: true,
-  renderLineHighlight: "none",
+  renderLineHighlight: "all",
   padding: { top: 16 },
-  // Hide the Monaco accessibility keyboard icon
-  accessibilitySupport: "off",
 };
+
+// ── Custom Monaco theme definition ─────────────────────────────────────────
+function defineCustomTheme(monaco: Monaco) {
+  monaco.editor.defineTheme("synscript-dark", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "keyword", foreground: "d0bcff" },
+      { token: "keyword.control", foreground: "d0bcff" },
+      { token: "string", foreground: "25C2A0" },
+      { token: "string.value", foreground: "25C2A0" },
+      { token: "number", foreground: "ffb786" },
+      { token: "comment", foreground: "8c909f", fontStyle: "italic" },
+      { token: "function", foreground: "adc6ff" },
+      { token: "type", foreground: "7dd3fc" },
+      { token: "type.identifier", foreground: "7dd3fc" },
+      { token: "variable", foreground: "e1e2eb" },
+      { token: "tag", foreground: "f472b6" },
+      { token: "tag.html", foreground: "f472b6" },
+      { token: "attribute.name", foreground: "adc6ff" },
+      { token: "attribute.name.html", foreground: "adc6ff" },
+      { token: "attribute.value", foreground: "25C2A0" },
+      { token: "attribute.value.html", foreground: "25C2A0" },
+      { token: "delimiter", foreground: "8c909f" },
+      { token: "delimiter.html", foreground: "8c909f" },
+      { token: "metatag", foreground: "8c909f" },
+      { token: "metatag.html", foreground: "8c909f" },
+      { token: "metatag.content.html", foreground: "25C2A0" },
+      { token: "operator", foreground: "c9d1d9" },
+      { token: "regexp", foreground: "ffb786" },
+      { token: "annotation", foreground: "d0bcff" },
+      { token: "constant", foreground: "ffb786" },
+    ],
+    colors: {
+      "editor.background": "#0d1117",
+      "editor.foreground": "#e1e2eb",
+      "editor.lineHighlightBackground": "#1d202640",
+      "editorCursor.foreground": "#adc6ff",
+      "editor.selectionBackground": "#3B82F640",
+      "editorLineNumber.foreground": "#8c909f",
+      "editorLineNumber.activeForeground": "#adc6ff",
+      "editorIndentGuide.background": "#1d2026",
+      "editorIndentGuide.activeBackground": "#32353c",
+      "editorBracketMatch.background": "#3B82F630",
+      "editorBracketMatch.border": "#3B82F680",
+      "minimap.background": "#0d1117",
+      "editorGutter.background": "#0d1117",
+      "editorWidget.background": "#161b22",
+      "editorWidget.border": "#30363d",
+      "editorSuggestWidget.background": "#161b22",
+      "editorSuggestWidget.border": "#30363d",
+      "editorSuggestWidget.selectedBackground": "#1d202680",
+      "editorSuggestWidget.highlightForeground": "#adc6ff",
+      "editorHoverWidget.background": "#161b22",
+      "editorHoverWidget.border": "#30363d",
+      "input.background": "#0d1117",
+      "input.border": "#30363d",
+      "input.foreground": "#e1e2eb",
+      "scrollbarSlider.background": "#32353c60",
+      "scrollbarSlider.hoverBackground": "#42475480",
+      "scrollbarSlider.activeBackground": "#52576490",
+    },
+  });
+}
 
 // ── Default file set ────────────────────────────────────────────────────────
 const DEFAULT_FILES: FileSystem = {};
@@ -339,53 +392,6 @@ function RoomPage() {
     [roomId],
   );
 
-  // ── Monaco model management helpers ──────────────────────────────────
-  // (declared before applyRemoteFileChange / editor effects use them)
-  const getOrCreateMonacoModel = useCallback(
-    (monacoInst: Monaco, filePath: string, content: string, language: string) => {
-      const uri = monacoInst.Uri.parse(`file:///${filePath}`);
-      let model = monacoInst.editor.getModel(uri);
-
-      if (!model || model.isDisposed()) {
-        model = monacoInst.editor.createModel(content, language, uri);
-      } else {
-        const currentLang = model.getLanguageId();
-        if (currentLang !== language) {
-          monacoInst.editor.setModelLanguage(model, language);
-        }
-        // If the model was initialized with empty string before file content loaded, update it
-        if (model.getValue() === "" && content !== "") {
-          model.setValue(content);
-        }
-      }
-
-      monacoModelsRef.current.set(filePath, model);
-      return model;
-    },
-    []
-  );
-
-  const attachModelToEditor = useCallback(
-    (targetFile: string | null) => {
-      const editor = editorRef.current;
-      const monacoInst = monacoRef.current;
-      if (!editor || !monacoInst) return;
-
-      if (!targetFile) {
-        editor.setModel(null);
-        return;
-      }
-
-      const content = filesRef.current[targetFile]?.content ?? "";
-      const language = getLanguageFromExtension(targetFile);
-      const model = getOrCreateMonacoModel(monacoInst, targetFile, content, language);
-      if (editor.getModel() !== model) {
-        editor.setModel(model);
-      }
-    },
-    [getOrCreateMonacoModel]
-  );
-
   const applyRemoteFileChange = useCallback((payload: { filePath: string; content: string }) => {
     const { filePath, content } = payload;
     if (!filePath) return;
@@ -393,17 +399,13 @@ function RoomPage() {
     const monacoInst = monacoRef.current;
     const editorInst = editorRef.current;
     if (monacoInst) {
-      const model = getOrCreateMonacoModel(
-        monacoInst,
-        filePath,
-        content,
-        getLanguageFromExtension(filePath),
-      );
-      if (model && !model.isDisposed() && model.getValue() !== content) {
+      const model = monacoModelsRef.current.get(filePath);
+      if (model && model.getValue() !== content) {
         isRemoteUpdate.current = true;
 
+        // Only save/restore position if this model is the one currently showing in the editor
         const isActiveModel = editorInst?.getModel() === model;
-        const savedPosition = isActiveModel ? editorInst!.getPosition() : null;
+        const savedPosition = isActiveModel ? editorInst.getPosition() : null;
 
         const editOperation: editor.IIdentifiedSingleEditOperation = {
           range: model.getFullModelRange(),
@@ -413,25 +415,25 @@ function RoomPage() {
         model.pushEditOperations([], [editOperation], () => null);
 
         if (isActiveModel && savedPosition) {
+          // Clamp to valid range in case the new content is shorter
           const validPosition = model.validatePosition(savedPosition);
-          editorInst!.setPosition(validPosition);
+          editorInst.setPosition(validPosition);
         }
 
         isRemoteUpdate.current = false;
       }
     }
 
-    const cachedModel = monacoModelsRef.current.get(filePath);
-    const finalContent = (cachedModel && !cachedModel.isDisposed())
-      ? cachedModel.getValue()
-      : content;
+    // Also update React state (for persistence, UI, file tree) - read from model to ensure consistency
+    const model = monacoModelsRef.current.get(filePath);
+    const finalContent = model?.getValue() ?? content;
     setFiles((prev) => {
       const existing = prev[filePath];
       if (!existing || existing.type !== "file") return prev;
       if (existing.content === finalContent) return prev;
       return { ...prev, [filePath]: { ...existing, content: finalContent } };
     });
-  }, [getOrCreateMonacoModel]);
+  }, []);
 
   const handleRemoteFileCreated = useCallback((payload: { file: { path: string; name: string; type: string; content?: string } }) => {
     const { file } = payload;
@@ -872,7 +874,8 @@ function RoomPage() {
       }
 
       // Read content directly from the editor's model instead of relying on the value parameter
-      const newContent = editorRef.current?.getValue() ?? "";
+      const editor = editorRef.current;
+      const newContent = editor?.getValue() ?? "";
       setFiles((prev) => ({
         ...prev,
         [activeFile]: { ...prev[activeFile], content: newContent },
@@ -900,12 +903,6 @@ function RoomPage() {
       monacoRef.current = monaco;
       defineCustomTheme(monaco);
       monaco.editor.setTheme("synscript-dark");
-
-      // Immediately attach model for the active file upon editor mount
-      if (activeFileRef.current) {
-        attachModelToEditor(activeFileRef.current);
-      }
-
       editorInstance.focus();
 
       // Clean up previous cursor listener if exists
@@ -927,7 +924,7 @@ function RoomPage() {
         }
       });
     },
-    [emitCursorMove, attachModelToEditor]
+    [emitCursorMove]
   );
 
   // Sanitize userId for use as CSS class names (MongoDB IDs and JWT IDs may contain unsafe chars)
@@ -938,40 +935,61 @@ function RoomPage() {
   // Track previous cursor positions to skip no-op decoration updates
   const prevCursorPositionsRef = useRef<Map<string, { lineNumber: number; column: number; filePath: string }>>(new Map());
 
-  // Manage Monaco models on activeFile switch
+  // Manage Monaco models to avoid editor recreation on file switch
   useEffect(() => {
     const editor = editorRef.current;
     const monacoInst = monacoRef.current;
     if (!editor || !monacoInst) return;
 
     // Clear all decorations and widgets when switching files
-    try {
-      for (const [, collection] of remoteDecorationsRef.current) {
-        collection.clear();
-      }
-      for (const [, collection] of remoteLineDecorationsRef.current) {
-        collection.clear();
-      }
-      for (const [, entry] of remoteCaretWidgetsRef.current) {
-        editor.removeContentWidget(entry.widget);
-      }
-    } catch (_) {}
+    for (const [, collection] of remoteDecorationsRef.current) {
+      collection.clear();
+    }
+    for (const [, collection] of remoteLineDecorationsRef.current) {
+      collection.clear();
+    }
+    for (const [, entry] of remoteCaretWidgetsRef.current) {
+      editor.removeContentWidget(entry.widget);
+    }
     remoteDecorationsRef.current.clear();
     remoteLineDecorationsRef.current.clear();
     remoteCaretWidgetsRef.current.clear();
     prevCursorPositionsRef.current.clear();
 
-    // Attach model for active file
-    attachModelToEditor(activeFile);
-  }, [activeFile, attachModelToEditor]);
+    // Create or get model for the active file
+    if (activeFile) {
+      let model = monacoModelsRef.current.get(activeFile);
+      if (!model) {
+        model = monacoInst.editor.createModel(
+          currentContent,
+          currentLanguage,
+          monacoInst.Uri.parse(`file:///${activeFile}`)
+        );
+        monacoModelsRef.current.set(activeFile, model);
+      }
+      // model is guaranteed non-null here (created above if missing)
+      editor.setModel(model as editor.ITextModel);
+    } else {
+      editor.setModel(null);
+    }
+
+    // Cleanup unused models
+    const activeFiles = new Set(openTabs);
+    for (const [filePath, model] of monacoModelsRef.current) {
+      if (!activeFiles.has(filePath)) {
+        model.dispose();
+        monacoModelsRef.current.delete(filePath);
+      }
+    }
+  }, [activeFile, currentLanguage, openTabs, currentContent]);
 
   // Update Monaco decoration-based remote cursors (visual only, no editor state modification)
   useEffect(() => {
     const editor = editorRef.current;
     const monacoInst = monacoRef.current;
-    if (!editor || !monacoInst || !activeFile) return;
-    const currentModel = editor.getModel();
-    if (!currentModel || currentModel.isDisposed()) return;
+    if (!editor || !monacoInst) return;
+
+
 
     // Remove decorations and widgets for users who disconnected or are in a different file
     for (const [userId, collection] of remoteDecorationsRef.current) {
@@ -992,9 +1010,7 @@ function RoomPage() {
     for (const [userId, entry] of remoteCaretWidgetsRef.current) {
       const cursor = remoteCursors.get(userId);
       if (!cursor || cursor.filePath !== activeFile) {
-        try {
-          editor.removeContentWidget(entry.widget);
-        } catch (_) {}
+        editor.removeContentWidget(entry.widget);
         remoteCaretWidgetsRef.current.delete(userId);
       }
     }
@@ -1018,9 +1034,12 @@ function RoomPage() {
       if (cursor.filePath !== activeFile) return;
       const { lineNumber, column } = cursor;
 
+
+
       // Skip if position hasn't changed — prevents unnecessary clear+append flicker
       const prev = prevCursorPositionsRef.current.get(userId);
       if (prev && prev.lineNumber === lineNumber && prev.column === column && prev.filePath === cursor.filePath) {
+
         return;
       }
       prevCursorPositionsRef.current.set(userId, { lineNumber, column, filePath: cursor.filePath });
@@ -1028,6 +1047,7 @@ function RoomPage() {
       // Create/update line highlight decoration (separate collection)
       let lineCollection = remoteLineDecorationsRef.current.get(userId);
       if (!lineCollection) {
+
         lineCollection = editor.createDecorationsCollection([]);
         remoteLineDecorationsRef.current.set(userId, lineCollection);
       }
@@ -1055,32 +1075,36 @@ function RoomPage() {
           getId: () => `rc-caret-${userId}`,
           getDomNode: () => domNode,
           getPosition: () => {
+            const model = editor.getModel();
+            if (model && lineNumber > model.getLineCount()) {
+              // console.warn('WIDGET_POSITION_INVALID', {userId, lineNumber, currentLineCount: model.getLineCount()});
+            }
             return {
               position: { lineNumber, column },
               preference: [monacoInst.editor.ContentWidgetPositionPreference.EXACT],
             };
           },
         };
-        try {
-          editor.addContentWidget(widget);
-        } catch (_) {}
+        editor.addContentWidget(widget);
         entry = { widget, domNode };
         remoteCaretWidgetsRef.current.set(userId, entry);
       }
       entry.domNode.style.backgroundColor = cursor.color;
       entry.widget.getPosition = () => {
+        const model = editor.getModel();
+        if (model && lineNumber > model.getLineCount()) {
+          // console.warn('WIDGET_POSITION_INVALID', {userId, lineNumber, currentLineCount: model.getLineCount()});
+        }
         return {
           position: { lineNumber, column },
           preference: [monacoInst.editor.ContentWidgetPositionPreference.EXACT],
         };
       };
-      try {
-        editor.layoutContentWidget(entry.widget);
-      } catch (_) {}
+      editor.layoutContentWidget(entry.widget);
     });
   }, [remoteCursors, activeFile, sanitizeClassId]);
 
-  // Cleanup cursor styles, listeners, widgets and models on unmount
+  // Cleanup cursor styles and decorations on unmount and before editor recreation
   useEffect(() => {
     return () => {
       // Clean up cursor listener
@@ -1097,15 +1121,8 @@ function RoomPage() {
       for (const [, collection] of remoteDecorationsRef.current) {
         collection.clear();
       }
-      for (const [, collection] of remoteLineDecorationsRef.current) {
-        collection.clear();
-      }
-      if (editorRef.current) {
-        for (const [, entry] of remoteCaretWidgetsRef.current) {
-          try {
-            editorRef.current.removeContentWidget(entry.widget);
-          } catch (_) {}
-        }
+      for (const [, entry] of remoteCaretWidgetsRef.current) {
+        editorRef.current?.removeContentWidget(entry.widget);
       }
       remoteDecorationsRef.current.clear();
       remoteLineDecorationsRef.current.clear();
@@ -1113,46 +1130,29 @@ function RoomPage() {
       
       // Clean up all Monaco models
       for (const [, model] of monacoModelsRef.current) {
-        if (!model.isDisposed()) {
-          model.dispose();
-        }
+        model.dispose();
       }
       monacoModelsRef.current.clear();
-      editorRef.current = null;
-      monacoRef.current = null;
     };
   }, []);
 
-  // ── Save modal state ────────────────────────────────────────────────────
-  const [saveModalOpen, setSaveModalOpen] = useState(false);
-  const [snapshotName, setSnapshotName] = useState("");
-  const [saveLoading, setSaveLoading] = useState(false);
-
-  // ── Save — opens the name modal ──────────────────────────────────────────
-  const handleSave = () => {
+  // ── Save — sends active file content to backend ──────────────────────────
+  const handleSave = async () => {
     if (!activeFile) return;
-    setSnapshotName("");
-    setSaveModalOpen(true);
-  };
 
-  // ── Confirm save — sends snapshot to backend ─────────────────────────────
-  const confirmSave = async () => {
-    if (!activeFile) return;
+    // Prompt for custom snapshot name
+    const customName = window.prompt("Enter a name for this snapshot:", "");
+    if (customName === null) return; // User cancelled
     const codeText = files[activeFile]?.content ?? "";
-    setSaveLoading(true);
     try {
       await api.post(`/api/rooms/${roomId}/save`, {
         code: codeText,
         language: getLanguageFromExtension(activeFile),
-        label: snapshotName.trim() || undefined,
       });
-      setSaveModalOpen(false);
-      setSnapshotName("");
+      alert("Session saved successfully!");
     } catch (err: any) {
       console.error(err);
       alert(err.response?.data?.message || "Failed to save session");
-    } finally {
-      setSaveLoading(false);
     }
   };
 
@@ -1664,9 +1664,9 @@ function RoomPage() {
               </div>
             )}
 
-            {/* Monaco Editor Container - kept permanently mounted to avoid disposed model errors and expensive re-initializations */}
-            <div className="flex-1 overflow-hidden monaco-editor-wrapper relative" ref={editorContainerRef}>
-              <div className={`w-full h-full ${activeFile ? "block" : "hidden"}`}>
+            {/* Monaco Editor */}
+            {activeFile ? (
+              <div className="flex-1 overflow-hidden monaco-editor-wrapper relative" ref={editorContainerRef}>
                 <Editor
                   language={currentLanguage}
                   onChange={handleEditorChange}
@@ -1681,13 +1681,12 @@ function RoomPage() {
                   }
                 />
               </div>
-              {!activeFile && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-outline-variant bg-editor-bg z-10">
-                  <span className="material-symbols-outlined text-5xl mb-4 text-white/5">code</span>
-                  <p className="text-sm">Select or create a file to edit</p>
-                </div>
-              )}
-            </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-outline-variant bg-editor-bg">
+                <span className="material-symbols-outlined text-5xl mb-4 text-white/5">code</span>
+                <p className="text-sm">Select or create a file to edit</p>
+              </div>
+            )}
 
 
             {/* Integrated Terminal (static chrome, preserved from original) */}
@@ -1800,75 +1799,6 @@ function RoomPage() {
           <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary rounded-full blur-[120px]" />
           <div className="absolute bottom-[-10%] left-[-10%] w-[30%] h-[30%] bg-secondary rounded-full blur-[100px]" />
         </div>
-
-        {/* ── Save Snapshot Modal ───────────────────────────────────────── */}
-        {saveModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="w-[420px] rounded-2xl bg-[#0F1219] border border-white/10 shadow-2xl shadow-black/60 overflow-hidden">
-              {/* Modal header */}
-              <div className="flex items-center gap-3 px-6 py-4 border-b border-white/5 bg-gradient-to-r from-emerald-600/10 to-transparent">
-                <div className="w-8 h-8 rounded-lg bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[18px] text-emerald-400">save</span>
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-white">Save Snapshot</div>
-                  <div className="text-[11px] text-[#8c909f]">Name this version for easy reference later</div>
-                </div>
-              </div>
-
-              {/* Modal body */}
-              <div className="px-6 py-5 space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#c2c6d6] mb-2 uppercase tracking-wider">
-                    Snapshot Name
-                  </label>
-                  <input
-                    autoFocus
-                    type="text"
-                    value={snapshotName}
-                    onChange={(e) => setSnapshotName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") confirmSave(); if (e.key === "Escape") setSaveModalOpen(false); }}
-                    placeholder='e.g. "Before Refactor", "Socket Fix", "v1.0"'
-                    className="w-full bg-[#0B0E14] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-[#8c909f] focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/20 transition-all"
-                  />
-                  <div className="flex gap-2 mt-3 flex-wrap">
-                    {["Before Refactor", "Socket Fix", "Working Build", "Version 1"].map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        onClick={() => setSnapshotName(suggestion)}
-                        className="text-[11px] px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#8c909f] hover:text-white border border-white/10 transition-all"
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Modal footer */}
-              <div className="px-6 py-4 border-t border-white/5 flex gap-3 justify-end">
-                <button
-                  onClick={() => setSaveModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-sm text-[#8c909f] hover:text-white hover:bg-white/5 transition-all border border-transparent hover:border-white/10"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmSave}
-                  disabled={saveLoading}
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-bold flex items-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
-                >
-                  {saveLoading ? (
-                    <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>
-                  ) : (
-                    <span className="material-symbols-outlined text-[16px]">save</span>
-                  )}
-                  {saveLoading ? "Saving…" : "Save Snapshot"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Floating action buttons + AI Copilot (unchanged sub-components) */}
         <RoomFloatingActions roomId={roomId} onSave={handleSave} onlineCount={onlineCount} />

@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const Room = require('../models/Room');
 const SessionHistory = require('../models/SessionHistory');
+const { replaceRoomFiles } = require('../utils/roomFiles');
 
 // @desc    Create a new room
 // @route   POST /api/rooms/create
@@ -23,6 +24,8 @@ const createRoom = async (req, res) => {
       language: language || 'javascript',
       isPrivate: isPrivate || false,
       password: password || '',
+      files: [],
+      currentCode: '',
     });
 
     res.status(201).json({
@@ -69,6 +72,7 @@ const joinRoom = async (req, res) => {
       name: room.name,
       language: room.language,
       currentCode: room.currentCode,
+      files: room.files || [],
       isPrivate: room.isPrivate,
     });
   } catch (error) {
@@ -110,10 +114,13 @@ const saveSession = async (req, res) => {
       return res.status(404).json({ message: 'Room not found' });
     }
 
-    // Update the room's current code
-    room.currentCode = code || room.currentCode;
-    if (language) room.language = language;
-    await room.save();
+    if (Array.isArray(req.body.files)) {
+      await replaceRoomFiles(roomId, req.body.files);
+    } else {
+      room.currentCode = code || room.currentCode;
+      if (language) room.language = language;
+      await room.save();
+    }
 
     // Create a version snapshot
     const snapshot = await SessionHistory.create({
@@ -121,7 +128,7 @@ const saveSession = async (req, res) => {
       savedBy: req.user._id,
       code: code || room.currentCode,
       language: language || room.language,
-      label: label || `Snapshot by ${req.user.username}`,
+      label: label || `Snapshot ${new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}`,
     });
 
     res.status(201).json({ message: 'Session saved successfully', snapshot });
@@ -196,4 +203,32 @@ const getSystemStats = async (req, res) => {
   }
 };
 
-module.exports = { createRoom, joinRoom, getRoomDetails, saveSession, getVersionHistory, getUserRooms, getSystemStats };
+// @desc    Persist full room file tree
+// @route   PUT /api/rooms/:roomId/files
+// @access  Private
+const saveRoomFiles = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const room = await Room.findOne({ roomId });
+    if (!room) {
+      return res.status(404).json({ message: 'Room not found' });
+    }
+
+    const updated = await replaceRoomFiles(roomId, req.body.files);
+    res.json({ message: 'Files saved', files: updated.files });
+  } catch (error) {
+    console.error('SaveRoomFiles error:', error.message);
+    res.status(500).json({ message: 'Server error saving room files' });
+  }
+};
+
+module.exports = {
+  createRoom,
+  joinRoom,
+  getRoomDetails,
+  saveSession,
+  getVersionHistory,
+  getUserRooms,
+  getSystemStats,
+  saveRoomFiles,
+};

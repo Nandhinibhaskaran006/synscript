@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { isLoggedIn, setRedirect } from "../lib/auth";
-import { addUserRoom } from "../lib/user-rooms";
 import { AppShell } from "../components/AppShell";
 import api from "../api/axios";
 
@@ -40,15 +39,6 @@ function NewRoomPage() {
         language: lang.toLowerCase(),
       });
       const roomData = res.data;
-
-      addUserRoom({
-        id: roomData.roomId,
-        name: roomData.name,
-        lang: roomData.language,
-        members: ["Alex", ...collaborators],
-        capacity: 10,
-        createdAt: Date.now()
-      });
 
       // Store active room ID
       localStorage.setItem("syncscript_active_roomId", roomData.roomId);
