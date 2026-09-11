@@ -8,6 +8,7 @@ const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const roomRoutes = require('./routes/roomRoutes');
 const invitationRoutes = require('./routes/invitationRoutes');
+const executeRoutes = require('./routes/executeRoutes');
 const editorSocket = require('./sockets/editorSocket');
 
 // ── Connect to MongoDB ──────────────────────────────────────────
@@ -31,6 +32,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/invitations', invitationRoutes);
+app.use('/api/execute', executeRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

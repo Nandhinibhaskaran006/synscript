@@ -202,6 +202,116 @@ function RoomPage() {
   const localCursorLineRef = useRef<number>(0);
   const monacoModelsRef = useRef<Map<string, editor.ITextModel>>(new Map());
   
+  // ── Phase 6: Bottom Panel & Code Execution State ─────────────────────────
+  const [isBottomPanelOpen, setIsBottomPanelOpen] = useState(false);
+  const [bottomPanelTab, setBottomPanelTab] = useState<"output" | "terminal" | "debug">("output");
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(240);
+  const [isPanelMaximized, setIsPanelMaximized] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionOutput, setExecutionOutput] = useState("");
+  const [executionError, setExecutionError] = useState("");
+  const [executionStatus, setExecutionStatus] = useState<"idle" | "running" | "success" | "error">("idle");
+  const [executionDuration, setExecutionDuration] = useState<number | null>(null);
+  const [executionTimestamp, setExecutionTimestamp] = useState<string | null>(null);
+  const [executedLanguage, setExecutedLanguage] = useState<string | null>(null);
+  const [executedFileName, setExecutedFileName] = useState<string | null>(null);
+
+  const isDraggingPanelRef = useRef(false);
+  const startDragYRef = useRef(0);
+  const startHeightRef = useRef(240);
+  const handleRunCodeRef = useRef<() => void>(() => {});
+
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingPanelRef.current = true;
+    startDragYRef.current = e.clientY;
+    startHeightRef.current = bottomPanelHeight;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      if (!isDraggingPanelRef.current) return;
+      const deltaY = startDragYRef.current - moveEvent.clientY;
+      const newHeight = Math.min(Math.max(startHeightRef.current + deltaY, 100), 650);
+      setBottomPanelHeight(newHeight);
+    };
+
+    const onMouseUp = () => {
+      isDraggingPanelRef.current = false;
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  };
+
+  const handleRunCode = useCallback(async () => {
+    const currentActive = activeFileRef.current;
+    if (!currentActive || isExecuting) return;
+
+    const currentFiles = filesRef.current;
+    const model = monacoModelsRef.current.get(currentActive);
+    const code = model ? model.getValue() : (currentFiles[currentActive]?.content ?? "");
+    const language = getLanguageFromExtension(currentActive);
+    const fileName = currentFiles[currentActive]?.name || currentActive;
+
+    setIsExecuting(true);
+    setExecutionStatus("running");
+    setExecutionOutput("");
+    setExecutionError("");
+    setExecutedLanguage(getLanguageLabel(language));
+    setExecutedFileName(fileName);
+    setExecutionTimestamp(new Date().toLocaleTimeString());
+    setIsBottomPanelOpen(true);
+    setBottomPanelTab("output");
+
+    const startTime = performance.now();
+
+    try {
+      const response = await api.post("/api/execute", {
+        language,
+        code,
+      });
+
+      const elapsed = Math.round(performance.now() - startTime);
+      setExecutionDuration(elapsed);
+
+      if (response.data.success) {
+        setExecutionStatus("success");
+        setExecutionOutput(response.data.output || "(Process finished with no output)");
+        setExecutionError(response.data.error || "");
+      } else {
+        setExecutionStatus("error");
+        setExecutionOutput(response.data.output || "");
+        setExecutionError(response.data.error || "Execution failed with an error.");
+      }
+    } catch (err: any) {
+      const elapsed = Math.round(performance.now() - startTime);
+      setExecutionDuration(elapsed);
+      setExecutionStatus("error");
+      const errMsg = err.response?.data?.error || err.response?.data?.message || err.message || "Failed to execute code";
+      setExecutionError(errMsg);
+    } finally {
+      setIsExecuting(false);
+    }
+  }, [isExecuting]);
+
+  handleRunCodeRef.current = handleRunCode;
+
+  // Global shortcut for running code (Ctrl+Enter / Cmd+Enter / F5)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        handleRunCodeRef.current();
+      } else if (e.key === "F5") {
+        e.preventDefault();
+        handleRunCodeRef.current();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   // Derived values needed by useEffects - declared early to avoid temporal dead zone
   const currentContent = activeFile ? (files[activeFile]?.content ?? "") : "";
   const currentLanguage = activeFile ? getLanguageFromExtension(activeFile) : "plaintext";
@@ -907,6 +1017,14 @@ function RoomPage() {
       }
 
       editorInstance.focus();
+
+      // Register Run Code shortcut in Monaco
+      editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+        handleRunCodeRef.current?.();
+      });
+      editorInstance.addCommand(monaco.KeyCode.F5, () => {
+        handleRunCodeRef.current?.();
+      });
 
       // Clean up previous cursor listener if exists
       if (cursorChangeListenerRef.current) {
@@ -1641,26 +1759,57 @@ function RoomPage() {
               )}
             </div>
 
-            {/* Editor header bar — file info + language + modified status */}
+            {/* Editor header bar — file info + language + modified status + Run button */}
             {activeFile && (
-              <div className="flex items-center h-7 px-4 bg-[#0d1117] border-b border-white/5 gap-3 flex-shrink-0">
-                <div className="flex items-center gap-1.5">
-                  <span className={`material-symbols-outlined text-[14px] ${getFileIcon(files[activeFile]?.name || "").color}`}>
-                    {getFileIcon(files[activeFile]?.name || "").icon}
-                  </span>
-                  <span className="text-[12px] text-on-surface font-medium">{activeFile}</span>
+              <div className="flex items-center justify-between h-8 px-4 bg-[#0d1117] border-b border-white/5 flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`material-symbols-outlined text-[14px] ${getFileIcon(files[activeFile]?.name || "").color}`}>
+                      {getFileIcon(files[activeFile]?.name || "").icon}
+                    </span>
+                    <span className="text-[12px] text-on-surface font-medium">{activeFile}</span>
+                  </div>
+                  <span className="text-[12px] text-outline">|</span>
+                  <span className="text-[12px] text-outline-variant">{getLanguageLabel(currentLanguage)}</span>
+                  {isCurrentModified && (
+                    <>
+                      <span className="text-[12px] text-outline">|</span>
+                      <div className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                        <span className="text-[12px] text-amber-400">Modified</span>
+                      </div>
+                    </>
+                  )}
                 </div>
-                <span className="text-[12px] text-outline">|</span>
-                <span className="text-[12px] text-outline-variant">{getLanguageLabel(currentLanguage)}</span>
-                {isCurrentModified && (
-                  <>
-                    <span className="text-[12px] text-outline">|</span>
-                    <div className="flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                      <span className="text-[12px] text-amber-400">Modified</span>
-                    </div>
-                  </>
-                )}
+
+                {/* Editor Actions: Run Code & Toggle Output */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleRunCode}
+                    disabled={isExecuting}
+                    title="Run Code (Ctrl+Enter / Cmd+Enter / F5)"
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition-all shadow-sm ${
+                      isExecuting
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-wait"
+                        : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40 active:scale-95 cursor-pointer"
+                    }`}
+                  >
+                    <span className={`material-symbols-outlined text-[15px] ${isExecuting ? "animate-spin" : ""}`}>
+                      {isExecuting ? "sync" : "play_arrow"}
+                    </span>
+                    <span>{isExecuting ? "Running..." : "Run"}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsBottomPanelOpen(!isBottomPanelOpen)}
+                    title={isBottomPanelOpen ? "Hide Bottom Panel" : "Show Bottom Panel"}
+                    className={`p-1 rounded text-outline hover:text-on-surface hover:bg-white/5 transition-colors flex items-center ${
+                      isBottomPanelOpen ? "text-primary" : ""
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">terminal</span>
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1689,51 +1838,255 @@ function RoomPage() {
               )}
             </div>
 
+            {/* ── Collapsible & Resizable Bottom Panel (VS Code style) ──────── */}
+            {isBottomPanelOpen && (
+              <div
+                style={{ height: isPanelMaximized ? "60vh" : `${bottomPanelHeight}px` }}
+                className="border-t border-white/10 bg-editor-bg flex flex-col flex-shrink-0 relative transition-[height] duration-75"
+              >
+                {/* Drag handle for resizing */}
+                <div
+                  onMouseDown={handleResizeMouseDown}
+                  className="h-1.5 w-full bg-white/5 hover:bg-primary/50 cursor-ns-resize transition-colors flex items-center justify-center group flex-shrink-0 select-none"
+                  title="Drag to resize console"
+                >
+                  <div className="w-8 h-0.5 rounded-full bg-white/20 group-hover:bg-primary transition-colors" />
+                </div>
 
-            {/* Integrated Terminal (static chrome, preserved from original) */}
-            <div className="h-48 border-t border-white/10 bg-editor-bg flex flex-col flex-shrink-0">
-              <div className="flex items-center h-8 px-4 bg-surface-container-low/50 gap-4">
-                <button className="text-label-caps text-primary border-b-2 border-primary h-full px-2">
-                  Terminal
-                </button>
-                <button className="text-label-caps text-outline hover:text-on-surface h-full px-2">
-                  Output
-                </button>
-                <button className="text-label-caps text-outline hover:text-on-surface h-full px-2">
-                  Debug Console
-                </button>
-                <div className="ml-auto flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[16px] text-outline hover:text-on-surface cursor-pointer">add</span>
-                  <span className="material-symbols-outlined text-[16px] text-outline hover:text-on-surface cursor-pointer">delete</span>
-                  <span className="material-symbols-outlined text-[16px] text-outline hover:text-on-surface cursor-pointer">close</span>
+                {/* Panel header with tabs and action buttons */}
+                <div className="flex items-center h-8 px-3 bg-surface-container-low/80 border-b border-white/5 gap-1 flex-shrink-0 select-none">
+                  <button
+                    onClick={() => setBottomPanelTab("output")}
+                    className={`flex items-center gap-1.5 h-full px-3 text-xs font-medium border-b-2 transition-colors ${
+                      bottomPanelTab === "output"
+                        ? "text-primary border-primary bg-white/5"
+                        : "text-outline hover:text-on-surface border-transparent"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[14px]">output</span>
+                    <span>Output</span>
+                    {isExecuting && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping ml-0.5" />
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => setBottomPanelTab("terminal")}
+                    className={`flex items-center gap-1.5 h-full px-3 text-xs font-medium border-b-2 transition-colors ${
+                      bottomPanelTab === "terminal"
+                        ? "text-primary border-primary bg-white/5"
+                        : "text-outline hover:text-on-surface border-transparent"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[14px]">terminal</span>
+                    <span>Terminal</span>
+                  </button>
+
+                  <button
+                    onClick={() => setBottomPanelTab("debug")}
+                    className={`flex items-center gap-1.5 h-full px-3 text-xs font-medium border-b-2 transition-colors ${
+                      bottomPanelTab === "debug"
+                        ? "text-primary border-primary bg-white/5"
+                        : "text-outline hover:text-on-surface border-transparent"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[14px]">bug_report</span>
+                    <span>Debug Console</span>
+                  </button>
+
+                  {/* Status Indicator */}
+                  {bottomPanelTab === "output" && executionStatus !== "idle" && (
+                    <div className="flex items-center gap-2 ml-3">
+                      {executionStatus === "running" && (
+                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[11px]">
+                          <span className="material-symbols-outlined text-[13px] animate-spin">sync</span>
+                          <span>Running {executedFileName}...</span>
+                        </div>
+                      )}
+                      {executionStatus === "success" && (
+                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[11px]">
+                          <span className="material-symbols-outlined text-[13px]">check_circle</span>
+                          <span>Completed {executionDuration !== null ? `(${executionDuration}ms)` : ""}</span>
+                        </div>
+                      )}
+                      {executionStatus === "error" && (
+                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[11px]">
+                          <span className="material-symbols-outlined text-[13px]">error</span>
+                          <span>Failed {executionDuration !== null ? `(${executionDuration}ms)` : ""}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Right Header Action Icons */}
+                  <div className="ml-auto flex items-center gap-1">
+                    {bottomPanelTab === "output" && (
+                      <button
+                        onClick={() => {
+                          setExecutionOutput("");
+                          setExecutionError("");
+                          setExecutionStatus("idle");
+                          setExecutionDuration(null);
+                        }}
+                        title="Clear Output"
+                        className="p-1 rounded text-outline hover:text-on-surface hover:bg-white/5 transition-colors flex items-center"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">delete_sweep</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setIsPanelMaximized(!isPanelMaximized)}
+                      title={isPanelMaximized ? "Restore Height" : "Maximize Panel"}
+                      className="p-1 rounded text-outline hover:text-on-surface hover:bg-white/5 transition-colors flex items-center"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">
+                        {isPanelMaximized ? "unfold_less" : "unfold_more"}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => setIsBottomPanelOpen(false)}
+                      title="Close Panel"
+                      className="p-1 rounded text-outline hover:text-on-surface hover:bg-white/5 transition-colors flex items-center"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">close</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Bottom Panel Content Body */}
+                <div className="flex-1 overflow-y-auto p-4 font-mono text-xs custom-scrollbar bg-editor-bg">
+                  {bottomPanelTab === "output" && (
+                    <div className="space-y-3">
+                      {/* Meta banner */}
+                      {executedFileName && (
+                        <div className="flex items-center justify-between text-[11px] text-outline-variant pb-2 border-b border-white/5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-primary font-semibold">[SynScript Execution Engine]</span>
+                            <span>{executedFileName}</span>
+                            <span className="text-outline">({executedLanguage})</span>
+                          </div>
+                          {executionTimestamp && (
+                            <span className="text-outline">{executionTimestamp}</span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Loading state */}
+                      {isExecuting && (
+                        <div className="flex items-center gap-2 py-4 text-amber-300">
+                          <span className="material-symbols-outlined text-lg animate-spin">sync</span>
+                          <span>Executing program in child process...</span>
+                        </div>
+                      )}
+
+                      {/* Standard Output */}
+                      {executionOutput && (
+                        <div>
+                          <div className="text-[10px] uppercase font-bold text-outline mb-1 tracking-wider">Output (stdout)</div>
+                          <pre className="text-[#e1e2eb] whitespace-pre-wrap font-mono select-text bg-[#080a0f] p-3 rounded-lg border border-white/5 leading-relaxed">
+                            {executionOutput}
+                          </pre>
+                        </div>
+                      )}
+
+                      {/* Standard Error */}
+                      {executionError && (
+                        <div>
+                          <div className="text-[10px] uppercase font-bold text-rose-400 mb-1 tracking-wider flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[13px]">warning</span>
+                            <span>Error (stderr)</span>
+                          </div>
+                          <pre className="text-rose-300 whitespace-pre-wrap font-mono select-text bg-rose-950/20 p-3 rounded-lg border border-rose-800/30 leading-relaxed">
+                            {executionError}
+                          </pre>
+                        </div>
+                      )}
+
+                      {/* Empty State */}
+                      {!isExecuting && !executionOutput && !executionError && (
+                        <div className="flex flex-col items-center justify-center py-8 text-outline text-center">
+                          <span className="material-symbols-outlined text-3xl mb-2 text-white/10">play_circle</span>
+                          <p className="text-xs">No execution output yet.</p>
+                          <p className="text-[11px] text-outline/60 mt-1">
+                            Click <strong className="text-emerald-400 font-semibold">Run</strong> in the toolbar or press <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white font-mono text-[10px]">Ctrl+Enter</kbd> / <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white font-mono text-[10px]">F5</kbd> to execute the active file.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {bottomPanelTab === "terminal" && (
+                    <div className="font-code-sm text-on-surface">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-status-active">➜</span>
+                        <span className="text-primary">{room?.name ?? roomId}</span>
+                        <span className="text-syntax-pink">git:(main)</span>
+                        <span className="text-on-surface-variant">npm start</span>
+                      </div>
+                      <div className="text-outline-variant mb-1">
+                        &gt; {room?.name ?? roomId}@1.0.0 start
+                      </div>
+                      <div className="text-outline-variant mb-1">&gt; ts-node src/index.ts</div>
+                      <div className="text-outline-variant mb-1">&nbsp;</div>
+                      <div className="text-status-active flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                        <span>[Ready] Server is listening on port 3000</span>
+                      </div>
+                      <div className="text-status-active flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                        <span>[Success] Database connected (PostgreSQL)</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {bottomPanelTab === "debug" && (
+                    <div className="text-outline italic text-xs py-4 text-center">
+                      Debug console ready. Set breakpoints in the editor to inspect variables.
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="flex-1 p-4 font-code-sm text-on-surface overflow-y-auto custom-scrollbar">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-status-active">➜</span>
-                  <span className="text-primary">{room?.name ?? roomId}</span>
-                  <span className="text-syntax-pink">git:(main)</span>
-                  <span className="text-on-surface-variant">npm start</span>
-                </div>
-                <div className="text-outline-variant mb-1">
-                  &gt; {room?.name ?? roomId}@1.0.0 start
-                </div>
-                <div className="text-outline-variant mb-1">&gt; ts-node src/index.ts</div>
-                <div className="text-outline-variant mb-1">&nbsp;</div>
-                <div className="text-status-active flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                  <span>[Ready] Server is listening on port 3000</span>
-                </div>
-                <div className="text-status-active flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                  <span>[Success] Database connected (PostgreSQL)</span>
+            )}
+
+            {/* Collapsed Console Strip */}
+            {!isBottomPanelOpen && (
+              <div className="h-6 border-t border-white/5 bg-surface-container-low flex items-center justify-between px-3 flex-shrink-0 select-none text-[11px]">
+                <button
+                  onClick={() => {
+                    setIsBottomPanelOpen(true);
+                    setBottomPanelTab("output");
+                  }}
+                  className="flex items-center gap-1.5 text-outline hover:text-on-surface transition-colors"
+                  title="Open Output Panel"
+                >
+                  <span className="material-symbols-outlined text-[14px]">output</span>
+                  <span>Output</span>
+                  {executionStatus === "success" && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  )}
+                  {executionStatus === "error" && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                  )}
+                </button>
+
+                <div className="flex items-center gap-3 text-outline/60 text-[10px]">
+                  <span>Run: <kbd className="bg-white/10 px-1 py-0.5 rounded text-white">Ctrl+Enter</kbd></span>
+                  <button
+                    onClick={() => setIsBottomPanelOpen(true)}
+                    className="hover:text-white transition-colors"
+                    title="Expand Panel"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">expand_less</span>
+                  </button>
                 </div>
               </div>
-            </div>
+            )}
           </section>
 
           {/* ── Right Sidebar: Live Chat ───────────────────────────────────── */}
           <aside className="w-72 bg-sidebar-bg border-l border-white/5 flex flex-col">
+            {/* Top padding so fixed floating action buttons (z-50, top-3) never overlap this header */}
+            <div className="h-10 flex-shrink-0" />
             <div className="px-4 py-3 flex justify-between items-center border-b border-white/5">
               <span className="text-label-caps text-outline uppercase">Live Chat</span>
               <span className="material-symbols-outlined text-[18px] text-outline">forum</span>
@@ -1878,7 +2231,7 @@ function RoomPage() {
   );
 }
 
-// ── RoomFloatingActions — unchanged ────────────────────────────────────────
+// ── RoomFloatingActions ────────────────────────────────────────────────────
 function RoomFloatingActions({
   roomId,
   onSave,
@@ -1889,15 +2242,33 @@ function RoomFloatingActions({
   onlineCount: number;
 }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const add = (e: React.FormEvent) => {
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [inviteStatus, setInviteStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const sendInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
-    addMemberToRoom(roomId, name.trim());
-    setName("");
-    setOpen(false);
-    alert(`Invited ${name} to ${roomId}`);
+    const trimmed = email.trim();
+    if (!trimmed) return;
+    setSending(true);
+    setInviteStatus(null);
+    try {
+      const res = await api.post("/api/invitations/send", {
+        roomId,
+        inviteeEmail: trimmed,
+      });
+      setInviteStatus({ type: "success", message: res.data.message || "Invitation sent!" });
+      setEmail("");
+    } catch (err: any) {
+      setInviteStatus({
+        type: "error",
+        message: err.response?.data?.message || "Failed to send invitation.",
+      });
+    } finally {
+      setSending(false);
+    }
   };
+
   return (
     <div className="fixed top-3 right-4 z-50 flex items-center gap-2">
       <span className="px-3 py-1.5 rounded-md bg-[#1d2026] border border-white/10 text-xs font-semibold text-[#adc6ff]">
@@ -1919,7 +2290,7 @@ function RoomFloatingActions({
         Save
       </button>
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => { setOpen((o) => !o); setInviteStatus(null); }}
         className="px-3 py-1.5 rounded-md bg-[#3B82F6] hover:bg-[#2563eb] text-white text-xs font-bold flex items-center gap-1.5"
       >
         <span className="material-symbols-outlined text-[16px]" style={{ color: "white" }}>
@@ -1929,22 +2300,34 @@ function RoomFloatingActions({
       </button>
       {open && (
         <form
-          onSubmit={add}
+          onSubmit={sendInvite}
           className="absolute top-12 right-0 w-72 p-4 rounded-xl bg-[#0F1219] border border-white/10 shadow-2xl space-y-2"
         >
-          <div className="text-sm font-semibold">Add collaborator</div>
+          <div className="text-sm font-semibold">Invite collaborator</div>
           <input
             autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Username or email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email address"
             className="w-full bg-[#0B0E14] border border-white/10 rounded-md px-3 py-2 text-sm focus:border-[#3B82F6] outline-none"
           />
+          {inviteStatus && (
+            <div className={`text-xs px-2 py-1.5 rounded-md ${
+              inviteStatus.type === "success"
+                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+            }`}>
+              {inviteStatus.message}
+            </div>
+          )}
           <button
             type="submit"
-            className="w-full px-3 py-2 rounded-md bg-[#3B82F6] hover:bg-[#2563eb] text-white text-sm font-bold"
+            disabled={sending}
+            className="w-full px-3 py-2 rounded-md bg-[#3B82F6] hover:bg-[#2563eb] disabled:opacity-50 text-white text-sm font-bold flex items-center justify-center gap-2"
           >
-            Send invite
+            {sending && <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>}
+            {sending ? "Sending..." : "Send invite"}
           </button>
         </form>
       )}
