@@ -2270,7 +2270,7 @@ function RoomFloatingActions({
   };
 
   return (
-    <div className="fixed top-3 right-4 z-50 flex items-center gap-2">
+    <div className="fixed top-3 right-4 z-50 flex flex-wrap items-center justify-end gap-2 max-w-[calc(100vw-2rem)]">
       <span className="px-3 py-1.5 rounded-md bg-[#1d2026] border border-white/10 text-xs font-semibold text-[#adc6ff]">
         Online: {onlineCount}
       </span>

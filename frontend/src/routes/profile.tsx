@@ -24,6 +24,44 @@ type Stats = {
   accountCreated: string;
 };
 
+function ProfileSkeleton() {
+  return (
+    <AppShell>
+      <main className="p-10 max-w-5xl mx-auto space-y-10 animate-pulse">
+        <header className="flex items-center gap-6">
+          <div className="w-24 h-24 shrink-0 rounded-full bg-white/10" />
+          <div className="flex-1 space-y-3">
+            <div className="h-8 w-48 bg-white/10 rounded-lg" />
+            <div className="h-4 w-64 bg-white/5 rounded" />
+            <div className="h-4 w-96 bg-white/5 rounded" />
+          </div>
+        </header>
+
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="bg-[#1d2026]/70 border border-white/5 rounded-xl p-6 space-y-2">
+              <div className="h-8 w-16 bg-white/10 rounded" />
+              <div className="h-3 w-28 bg-white/5 rounded" />
+            </div>
+          ))}
+        </section>
+
+        <section className="bg-[#1d2026]/70 border border-white/5 rounded-xl p-8 space-y-4">
+          <div className="h-6 w-44 bg-white/10 rounded" />
+          <div className="grid grid-cols-2 gap-6 pt-4">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="space-y-1.5">
+                <div className="h-3 w-20 bg-white/5 rounded" />
+                <div className="h-4 w-32 bg-white/10 rounded" />
+              </div>
+            ))}
+          </div>
+        </section>
+      </main>
+    </AppShell>
+  );
+}
+
 function ProfilePage() {
   const navigate = useNavigate();
   const { user, loading, logout, updateProfile, isLoggedIn } = useAuth();
@@ -41,39 +79,49 @@ function ProfilePage() {
   }, [loading, isLoggedIn, navigate]);
 
   useEffect(() => {
-    if (user && !isEditing) {
+    if (user?.username && !isEditing) {
       setEditUsername(user.username);
     }
-  }, [user, isEditing]);
+  }, [user?.username, isEditing]);
 
   useEffect(() => {
     if (user) {
+      let isMounted = true;
       const loadData = async () => {
         try {
           const [statsRes, roomsRes] = await Promise.all([
             api.get('/api/auth/me/stats'),
             api.get('/api/rooms')
           ]);
-          setStats(statsRes.data);
-          // Filter to show rooms CREATED by the current user
-          const owned = roomsRes.data.filter((r: any) => r.owner._id === user._id || r.owner === user._id);
-          setMyRooms(owned);
+          if (isMounted) {
+            setStats(statsRes.data);
+            // Filter to show rooms CREATED by the current user
+            const owned = roomsRes.data.filter((r: any) => r.owner?._id === user._id || r.owner === user._id);
+            setMyRooms(owned);
+          }
         } catch (error) {
           console.error("Failed to load profile data", error);
         } finally {
-          setFetching(false);
+          if (isMounted) setFetching(false);
         }
       };
       loadData();
+      return () => { isMounted = false; };
     }
   }, [user]);
 
-  if (loading || !user || fetching) return <div className="p-10 text-[#e1e2eb]">Loading profile...</div>;
+  if (loading || (!user && fetching)) {
+    return <ProfileSkeleton />;
+  }
+
+  if (!user) {
+    return <ProfileSkeleton />;
+  }
 
   const handleSave = async () => {
-    if (!editUsername) return;
+    if (!editUsername || !editUsername.trim()) return;
     try {
-      await updateProfile(editUsername);
+      await updateProfile(editUsername.trim());
       setIsEditing(false);
     } catch (err: any) {
       alert(err.response?.data?.message || "Failed to update username");
@@ -203,7 +251,7 @@ function ProfilePage() {
                 </div>
               </Link>
             ))}
-            {myRooms.length === 0 && (
+            {!fetching && myRooms.length === 0 && (
               <div className="col-span-full py-12 text-center border border-white/5 border-dashed rounded-xl bg-[#1d2026]/30">
                 <p className="text-[#8c909f] mb-4">You haven't created any rooms yet.</p>
                 <Link to="/rooms/new" className="bg-[#3B82F6] hover:bg-[#2563eb] text-white px-6 py-2.5 rounded-lg text-sm font-bold transition-colors inline-block">

@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AppShell } from "../components/AppShell";
+import { useAuth } from "../context/AuthContext";
 import api from "../api/axios";
 
 export const Route = createFileRoute("/dashboard")({
@@ -12,6 +13,7 @@ type Room = {
   roomId: string;
   name: string;
   language: string;
+  owner: { _id: string; username: string };
   members: { _id: string; username: string }[];
   isPrivate: boolean;
 };
@@ -25,26 +27,44 @@ type Stats = {
 
 function DashboardPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [joinId, setJoinId] = useState("");
   const [search, setSearch] = useState("");
   const [rooms, setRooms] = useState<Room[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const [roomsRes, statsRes] = await Promise.all([
-          api.get('/api/rooms'),
-          api.get('/api/rooms/stats/system')
-        ]);
-        setRooms(roomsRes.data);
-        setStats(statsRes.data);
-      } catch (error) {
-        console.error("Failed to load dashboard data", error);
-      }
+  const loadData = async () => {
+    try {
+      const [roomsRes, statsRes] = await Promise.all([
+        api.get('/api/rooms'),
+        api.get('/api/rooms/stats/system')
+      ]);
+      setRooms(roomsRes.data);
+      setStats(statsRes.data);
+    } catch (error) {
+      console.error("Failed to load dashboard data", error);
     }
+  };
+
+  useEffect(() => {
     loadData();
   }, []);
+
+  const handleDelete = async (room: Room) => {
+    const isOwner = user && room.owner?._id === user._id;
+    const confirmMsg = isOwner
+      ? `Permanently delete "${room.name}" for ALL collaborators? This cannot be undone.`
+      : `Leave "${room.name}"? You will lose access to this room.`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      await api.delete(`/api/rooms/${room.roomId}`);
+      setRooms(prev => prev.filter(r => r.roomId !== room.roomId));
+    } catch (err: any) {
+      alert(err.response?.data?.message || "Failed to delete/leave room");
+    }
+  };
 
   const enterRoom = async () => {
     const id = joinId.trim();
@@ -134,35 +154,59 @@ function DashboardPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredRooms.map(room => (
-                <Link key={room.roomId} to="/room/$roomId" params={{ roomId: room.roomId }} className="group relative block rounded-xl p-5 border border-white/5 bg-[#1d2026]/70 backdrop-blur hover:border-[#3B82F6]/30 transition-all duration-300">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex flex-col">
-                      <span className="text-base font-bold text-[#e1e2eb] truncate pr-4">{room.name}</span>
+              {filteredRooms.map(room => {
+                const isOwner = user && room.owner?._id === user._id;
+                return (
+                <div key={room.roomId} className="group relative block rounded-xl p-5 border border-white/5 bg-[#1d2026]/70 backdrop-blur hover:border-[#3B82F6]/30 transition-all duration-300">
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <Link to="/room/$roomId" params={{ roomId: room.roomId }} className="flex flex-col min-w-0 flex-1 group/title">
+                      <span className="text-base font-bold text-[#e1e2eb] group-hover/title:text-[#adc6ff] truncate transition-colors">{room.name}</span>
                       <span className="text-xs text-[#3B82F6] font-mono">{room.language}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[#8c909f] bg-white/5 px-2 py-1 rounded">
-                      <span className="material-symbols-outlined text-[14px]">group</span>
-                      <span className="text-[11px] font-bold">{room.members.length}</span>
+                    </Link>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1 text-[#8c909f] bg-white/5 px-2 py-1 rounded">
+                        <span className="material-symbols-outlined text-[14px]">group</span>
+                        <span className="text-[11px] font-bold">{room.members?.length ?? 0}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(room); }}
+                        className="p-1 rounded-lg text-[#8c909f] hover:text-rose-400 hover:bg-rose-500/20 transition-all flex items-center justify-center"
+                        title={isOwner ? "Delete room" : "Leave room"}
+                        aria-label={isOwner ? "Delete room" : "Leave room"}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">
+                          {isOwner ? "delete" : "logout"}
+                        </span>
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/5">
-                    <div className="flex -space-x-1.5">
-                      {room.members.slice(0, 3).map((m, i) => (
-                        <div key={m._id || i} className="w-6 h-6 rounded-full border border-[#10131a] bg-slate-500 overflow-hidden flex items-center justify-center text-[10px] font-bold text-white" title={m.username}>
-                          {m.username.charAt(0).toUpperCase()}
+
+                  <Link to="/room/$roomId" params={{ roomId: room.roomId }} className="block">
+                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/5">
+                      <div className="flex items-center gap-2">
+                        <div className="flex -space-x-1.5">
+                          {room.members.slice(0, 3).map((m, i) => (
+                            <div key={m._id || i} className="w-6 h-6 rounded-full border border-[#10131a] bg-slate-500 overflow-hidden flex items-center justify-center text-[10px] font-bold text-white" title={m.username}>
+                              {m.username.charAt(0).toUpperCase()}
+                            </div>
+                          ))}
+                          {room.members.length > 3 && (
+                            <div className="w-6 h-6 rounded-full border border-[#10131a] bg-white/10 flex items-center justify-center text-[8px] font-bold">
+                              +{room.members.length - 3}
+                            </div>
+                          )}
                         </div>
-                      ))}
-                      {room.members.length > 3 && (
-                        <div className="w-6 h-6 rounded-full border border-[#10131a] bg-white/10 flex items-center justify-center text-[8px] font-bold">
-                          +{room.members.length - 3}
-                        </div>
-                      )}
+                        {isOwner && (
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400/80 bg-amber-400/10 px-1.5 py-0.5 rounded">Owner</span>
+                        )}
+                      </div>
+                      <span className="bg-[#3B82F6]/10 group-hover:bg-[#3B82F6] text-[#3B82F6] group-hover:text-white px-4 py-1.5 rounded font-bold text-sm transition-all">Enter</span>
                     </div>
-                    <span className="bg-[#3B82F6]/10 group-hover:bg-[#3B82F6] text-[#3B82F6] group-hover:text-white px-4 py-1.5 rounded font-bold text-sm transition-all">Enter</span>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                </div>
+              );})
+              }
               {filteredRooms.length === 0 && (
                 <div className="col-span-full py-10 text-center text-[#8c909f]">No rooms found.</div>
               )}

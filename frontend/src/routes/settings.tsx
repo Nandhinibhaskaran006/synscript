@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { isLoggedIn, setRedirect } from "@/lib/auth";
 import { AppShell } from "../components/AppShell";
+import { useAuth } from "../context/AuthContext";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "SYNCSCRIPT | Settings" }] }),
@@ -13,15 +14,38 @@ function loadPrefs() {
   try { return JSON.parse(localStorage.getItem("syncscript_prefs") || "{}"); } catch { return {}; }
 }
 
+// ── Layout helpers — defined OUTSIDE the component to prevent remounting ──
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="bg-[#1d2026]/70 border border-white/5 rounded-xl p-6 space-y-4">
+      <h2 className="text-lg font-bold">{title}</h2>
+      <div className="space-y-4">{children}</div>
+    </section>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-3 gap-4 items-center">
+      <label className="text-sm text-[#c2c6d6]">{label}</label>
+      <div className="col-span-2">{children}</div>
+    </div>
+  );
+}
+
+const inputClass = "w-full bg-[#0B0E14] border border-white/10 rounded-lg px-3 py-2 text-sm focus:border-[#3B82F6] outline-none text-[#e1e2eb]";
+
 function SettingsPage() {
   const navigate = useNavigate();
+  const { user, updateProfile } = useAuth();
+
   useEffect(() => {
     if (!isLoggedIn()) { setRedirect("/settings"); navigate({ to: "/login" }); }
   }, [navigate]);
 
   const [prefs, setPrefs] = useState<any>({
-    name: "Alex Rivera",
-    email: "alex.rivera@syncscript.dev",
+    name: "",
+    email: "",
     theme: "Dark",
     fontSize: 14,
     tabSize: 2,
@@ -30,34 +54,45 @@ function SettingsPage() {
     notifications: true,
   });
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
-    const p = loadPrefs();
-    if (p) setPrefs((prev: any) => ({ ...prev, ...p }));
-  }, []);
+    const p = loadPrefs() || {};
+    setPrefs((prev: any) => ({
+      ...prev,
+      ...p,
+      name: user?.username ?? p.name ?? "",
+      email: user?.email ?? p.email ?? "",
+    }));
+  }, [user]);
 
-  const update = (k: string, v: any) => setPrefs((p: any) => ({ ...p, [k]: v }));
-  const save = () => {
-    localStorage.setItem("syncscript_prefs", JSON.stringify(prefs));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const update = (k: string, v: any) => {
+    setErrorMsg("");
+    setPrefs((p: any) => ({ ...p, [k]: v }));
   };
 
-  const Section = ({ title, children }: any) => (
-    <section className="bg-[#1d2026]/70 border border-white/5 rounded-xl p-6 space-y-4">
-      <h2 className="text-lg font-bold">{title}</h2>
-      <div className="space-y-4">{children}</div>
-    </section>
-  );
+  const save = async () => {
+    try {
+      setSaving(true);
+      setErrorMsg("");
+      
+      const newName = prefs.name?.trim();
+      // If display name is changed, update single source of truth via AuthContext
+      if (newName && user && newName !== user.username) {
+        await updateProfile(newName);
+      }
 
-  const Field = ({ label, children }: any) => (
-    <div className="grid grid-cols-3 gap-4 items-center">
-      <label className="text-sm text-[#c2c6d6]">{label}</label>
-      <div className="col-span-2">{children}</div>
-    </div>
-  );
-
-  const input = "w-full bg-[#0B0E14] border border-white/10 rounded-lg px-3 py-2 text-sm focus:border-[#3B82F6] outline-none";
+      localStorage.setItem("syncscript_prefs", JSON.stringify(prefs));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      console.error("Failed to save settings", err);
+      setErrorMsg(err.response?.data?.message || "Failed to update profile display name");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <AppShell>
@@ -67,14 +102,36 @@ function SettingsPage() {
             <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
             <p className="text-[#8c909f] text-sm mt-1">Manage your profile, editor, and account preferences.</p>
           </div>
-          <button onClick={save} className="btn-flashlight px-5 py-2.5 rounded-lg bg-[#3B82F6] hover:bg-[#2563eb] text-white font-bold">
-            {saved ? "Saved ✓" : "Save changes"}
-          </button>
+          <div className="flex items-center gap-3">
+            {errorMsg && <span className="text-rose-400 text-xs font-medium">{errorMsg}</span>}
+            <button 
+              onClick={save} 
+              disabled={saving}
+              className="btn-flashlight px-5 py-2.5 rounded-lg bg-[#3B82F6] hover:bg-[#2563eb] text-white font-bold disabled:opacity-50 transition"
+            >
+              {saving ? "Saving..." : saved ? "Saved ✓" : "Save changes"}
+            </button>
+          </div>
         </header>
 
         <Section title="Profile">
-          <Field label="Display name"><input className={input} value={prefs.name} onChange={e => update("name", e.target.value)} /></Field>
-          <Field label="Email"><input type="email" className={input} value={prefs.email} onChange={e => update("email", e.target.value)} /></Field>
+          <Field label="Display name">
+            <input 
+              className={inputClass} 
+              value={prefs.name} 
+              onChange={e => update("name", e.target.value)} 
+              placeholder="Your display name"
+            />
+          </Field>
+          <Field label="Email">
+            <input 
+              type="email" 
+              className={`${inputClass} opacity-75 cursor-not-allowed`} 
+              value={prefs.email} 
+              readOnly 
+              title="Email cannot be changed directly"
+            />
+          </Field>
         </Section>
 
         <Section title="Appearance">
@@ -89,10 +146,10 @@ function SettingsPage() {
 
         <Section title="Editor preferences">
           <Field label="Font size">
-            <input type="number" min={10} max={24} className={input} value={prefs.fontSize} onChange={e => update("fontSize", Number(e.target.value))} />
+            <input type="number" min={10} max={24} className={inputClass} value={prefs.fontSize} onChange={e => update("fontSize", Number(e.target.value))} />
           </Field>
           <Field label="Tab size">
-            <select className={input} value={prefs.tabSize} onChange={e => update("tabSize", Number(e.target.value))}>
+            <select className={inputClass} value={prefs.tabSize} onChange={e => update("tabSize", Number(e.target.value))}>
               {[2, 4, 8].map(n => <option key={n} value={n}>{n} spaces</option>)}
             </select>
           </Field>

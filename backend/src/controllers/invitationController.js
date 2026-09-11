@@ -193,9 +193,49 @@ const declineInvitation = async (req, res) => {
   }
 };
 
+// @desc    Get invitations received by logged-in user
+// @route   GET /api/invitations/received
+// @access  Private
+const getReceivedInvitations = async (req, res) => {
+  try {
+    const userEmail = req.user.email;
+    const invitations = await Invitation.find({ inviteeEmail: userEmail })
+      .sort({ createdAt: -1 });
+
+    // Auto-expire any that are past their expiry date
+    for (const inv of invitations) {
+      if (inv.status === 'pending' && new Date() > inv.expiresAt) {
+        inv.status = 'expired';
+        await inv.save();
+      }
+    }
+
+    res.json(invitations);
+  } catch (error) {
+    console.error('GetReceivedInvitations error:', error);
+    res.status(500).json({ message: 'Server error fetching received invitations' });
+  }
+};
+
+// @desc    Get invitations sent by logged-in user
+// @route   GET /api/invitations/sent
+// @access  Private
+const getSentInvitations = async (req, res) => {
+  try {
+    const invitations = await Invitation.find({ inviterId: req.user._id })
+      .sort({ createdAt: -1 });
+    res.json(invitations);
+  } catch (error) {
+    console.error('GetSentInvitations error:', error);
+    res.status(500).json({ message: 'Server error fetching sent invitations' });
+  }
+};
+
 module.exports = {
   sendInvitation,
   getInvitation,
   acceptInvitation,
   declineInvitation,
+  getReceivedInvitations,
+  getSentInvitations,
 };

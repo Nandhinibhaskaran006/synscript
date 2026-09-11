@@ -1,6 +1,9 @@
-/* Tailwind CDN handles utilities. Custom shared styles below. */
-
-html, body { margin: 0; padding: 0; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: #10131a;
+  color: #e1e2eb;
+}
 body { font-family: 'Geist', system-ui, sans-serif; }
 
 .material-symbols-outlined {

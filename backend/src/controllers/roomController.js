@@ -222,6 +222,49 @@ const saveRoomFiles = async (req, res) => {
   }
 };
 
+// @desc    Delete room (owner) or leave room (collaborator)
+// @route   DELETE /api/rooms/:roomId
+// @access  Private
+const deleteRoom = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const room = await Room.findOne({ roomId });
+
+    if (!room) {
+      return res.status(404).json({ message: 'Room not found' });
+    }
+
+    const isOwner = room.owner.toString() === req.user._id.toString();
+
+    if (isOwner) {
+      // Owner: permanently delete the room and associated data
+      const Invitation = require('../models/Invitation');
+
+      // Delete all invitations for this room
+      await Invitation.deleteMany({ roomId });
+
+      // Delete session history
+      await SessionHistory.deleteMany({ roomId });
+
+      // Delete the room itself
+      await Room.deleteOne({ roomId });
+
+      return res.json({ message: 'Room deleted permanently', action: 'deleted' });
+    } else {
+      // Collaborator: just remove self from members
+      room.members = room.members.filter(
+        (m) => m.toString() !== req.user._id.toString()
+      );
+      await room.save();
+
+      return res.json({ message: 'You have left the room', action: 'left' });
+    }
+  } catch (error) {
+    console.error('DeleteRoom error:', error.message);
+    res.status(500).json({ message: 'Server error deleting room' });
+  }
+};
+
 module.exports = {
   createRoom,
   joinRoom,
@@ -231,4 +274,5 @@ module.exports = {
   getUserRooms,
   getSystemStats,
   saveRoomFiles,
+  deleteRoom,
 };
