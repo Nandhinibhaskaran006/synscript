@@ -29,6 +29,7 @@ export function AuthProvider({ children }) {
               _id: res.data._id,
               username: res.data.username,
               email: res.data.email,
+              avatar: res.data.avatar || '',
               githubUrl: res.data.githubUrl || '',
             };
             setUser(userData);
@@ -57,6 +58,7 @@ export function AuthProvider({ children }) {
       _id: data._id,
       username: data.username,
       email: data.email,
+      avatar: data.avatar || '',
       githubUrl: data.githubUrl || '',
     };
     if (typeof window !== 'undefined') {
@@ -75,6 +77,7 @@ export function AuthProvider({ children }) {
       _id: data._id,
       username: data.username,
       email: data.email,
+      avatar: data.avatar || '',
       githubUrl: data.githubUrl || '',
     };
     if (typeof window !== 'undefined') {
@@ -103,6 +106,7 @@ export function AuthProvider({ children }) {
       _id: data._id,
       username: data.username,
       email: data.email,
+      avatar: data.avatar || '',
       githubUrl: data.githubUrl || '',
     };
     if (typeof window !== 'undefined') {
@@ -122,6 +126,7 @@ export function AuthProvider({ children }) {
         _id: res.data._id,
         username: res.data.username,
         email: res.data.email,
+        avatar: res.data.avatar || '',
         githubUrl: res.data.githubUrl || '',
       };
       if (typeof window !== 'undefined') {

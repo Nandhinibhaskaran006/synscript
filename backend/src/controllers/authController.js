@@ -29,6 +29,7 @@ const register = async (req, res) => {
       _id: user._id,
       username: user.username,
       email: user.email,
+      avatar: user.avatar || '',
       githubUrl: user.githubUrl || '',
       token: generateToken(user._id),
     });
@@ -58,6 +59,7 @@ const login = async (req, res) => {
       _id: user._id,
       username: user.username,
       email: user.email,
+      avatar: user.avatar || '',
       githubUrl: user.githubUrl || '',
       token: generateToken(user._id),
     });
@@ -85,7 +87,7 @@ const getMe = async (req, res) => {
 // @access  Private
 const updateMe = async (req, res) => {
   try {
-    const { username, githubUrl } = req.body;
+    const { username, githubUrl, avatar } = req.body;
     const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
@@ -100,6 +102,10 @@ const updateMe = async (req, res) => {
       user.username = username;
     }
 
+    if (avatar !== undefined) {
+      user.avatar = avatar ? avatar.trim() : '';
+    }
+
     if (githubUrl !== undefined) {
       user.githubUrl = githubUrl ? githubUrl.trim() : '';
     }
@@ -110,6 +116,7 @@ const updateMe = async (req, res) => {
       _id: user._id,
       username: user.username,
       email: user.email,
+      avatar: user.avatar || '',
       githubUrl: user.githubUrl || '',
       token: generateToken(user._id),
     });
@@ -251,4 +258,5 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { register, login, getMe, updateMe, getMyStats, forgotPassword, resetPassword };
+module.exports = { register, login, getMe, updateMe, getMyStats, forgotPassword, resetPassword, generateToken };
+

@@ -152,9 +152,17 @@ function ProfilePage() {
     <AppShell>
       <main className="p-10 max-w-5xl mx-auto space-y-10">
         <header className="flex items-center gap-6">
-          <div className="w-24 h-24 shrink-0 rounded-full bg-gradient-to-br from-[#3B82F6] to-[#adc6ff] flex items-center justify-center text-4xl font-bold text-[#0B0E14]">
-            {initial}
-          </div>
+          {user.avatar ? (
+            <img 
+              src={user.avatar} 
+              alt={user.username} 
+              className="w-24 h-24 shrink-0 rounded-full object-cover border-2 border-white/10 shadow-lg shadow-[#3B82F6]/10" 
+            />
+          ) : (
+            <div className="w-24 h-24 shrink-0 rounded-full bg-gradient-to-br from-[#3B82F6] to-[#adc6ff] flex items-center justify-center text-4xl font-bold text-[#0B0E14]">
+              {initial}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             {isEditing ? (
               <div className="flex items-center gap-3">

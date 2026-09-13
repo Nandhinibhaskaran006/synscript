@@ -5,6 +5,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 
 const connectDB = require('./config/db');
+const passport = require('./config/passport');
 const authRoutes = require('./routes/authRoutes');
 const roomRoutes = require('./routes/roomRoutes');
 const invitationRoutes = require('./routes/invitationRoutes');
@@ -27,6 +28,7 @@ app.use(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(passport.initialize());
 
 // ── REST Routes ─────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);

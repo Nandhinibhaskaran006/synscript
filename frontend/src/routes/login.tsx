@@ -15,6 +15,19 @@ function LoginPage() {
   const { login } = useAuth();
 
   useEffect(() => {
+    // Check if error parameter is present in URL (e.g. from OAuth failure)
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const error = urlParams.get("error");
+      if (error) {
+        alert(decodeURIComponent(error));
+        // Clean up URL without reloading
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     const form = document.getElementById("loginForm") as HTMLFormElement | null;
     if (!form) return;
 
@@ -44,7 +57,10 @@ function LoginPage() {
 
   // Replace waitlist link with register link dynamically
   const customizedHtml = html
-    .replace("Don't have an account? <a class=\"text-primary hover:underline font-semibold\" href=\"#\">Join the waitlist</a>", "Don't have an account? <a class=\"text-primary hover:underline font-semibold\" href=\"#\" data-route=\"/register\">Register</a>");
+    .replace(
+      "Don't have an account? <a class=\"text-primary hover:underline font-semibold\" href=\"#\">Join the waitlist</a>",
+      'Don\'t have an account? <a class="text-primary hover:underline font-semibold" href="#" data-route="/register">Register</a>'
+    );
 
   return (
     <RawScreen html={customizedHtml} className="bg-[#0B0E14] text-[#e1e2eb] min-h-screen" />

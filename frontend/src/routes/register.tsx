@@ -14,6 +14,17 @@ function RegisterPage() {
   const { register } = useAuth();
   const wrapperRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const error = urlParams.get("error");
+      if (error) {
+        alert(decodeURIComponent(error));
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+  }, []);
+
   // Username input HTML styled exactly like the email input field in body_2.html
   const usernameFieldHtml = `
 <div class="space-y-2">

@@ -23,6 +23,7 @@ import { Route as RoomsIndexRouteImport } from './routes/rooms.index'
 import { Route as RoomsNewRouteImport } from './routes/rooms.new'
 import { Route as RoomRoomIdRouteImport } from './routes/room.$roomId'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -94,6 +95,11 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
   path: '/$token',
   getParentRoute: () => InviteRoute,
 } as any)
+const AuthCallbackRoute = AuthCallbackRouteImport.update({
+  id: '/auth/callback',
+  path: '/auth/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -106,6 +112,7 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/invite/$token': typeof InviteTokenRoute
   '/room/$roomId': typeof RoomRoomIdRoute
   '/rooms/new': typeof RoomsNewRoute
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/invite/$token': typeof InviteTokenRoute
   '/room/$roomId': typeof RoomRoomIdRoute
   '/rooms/new': typeof RoomsNewRoute
@@ -139,6 +147,7 @@ export interface FileRoutesById {
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/invite/$token': typeof InviteTokenRoute
   '/room/$roomId': typeof RoomRoomIdRoute
   '/rooms/new': typeof RoomsNewRoute
@@ -157,6 +166,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/reset-password'
     | '/settings'
+    | '/auth/callback'
     | '/invite/$token'
     | '/room/$roomId'
     | '/rooms/new'
@@ -173,6 +183,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/reset-password'
     | '/settings'
+    | '/auth/callback'
     | '/invite/$token'
     | '/room/$roomId'
     | '/rooms/new'
@@ -189,6 +200,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/reset-password'
     | '/settings'
+    | '/auth/callback'
     | '/invite/$token'
     | '/room/$roomId'
     | '/rooms/new'
@@ -206,6 +218,7 @@ export interface RootRouteChildren {
   RegisterRoute: typeof RegisterRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
+  AuthCallbackRoute: typeof AuthCallbackRoute
   RoomRoomIdRoute: typeof RoomRoomIdRoute
   RoomsNewRoute: typeof RoomsNewRoute
   RoomsIndexRoute: typeof RoomsIndexRoute
@@ -311,6 +324,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof InviteRoute
     }
+    '/auth/callback': {
+      id: '/auth/callback'
+      path: '/auth/callback'
+      fullPath: '/auth/callback'
+      preLoaderRoute: typeof AuthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -336,6 +356,7 @@ const rootRouteChildren: RootRouteChildren = {
   RegisterRoute: RegisterRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
+  AuthCallbackRoute: AuthCallbackRoute,
   RoomRoomIdRoute: RoomRoomIdRoute,
   RoomsNewRoute: RoomsNewRoute,
   RoomsIndexRoute: RoomsIndexRoute,

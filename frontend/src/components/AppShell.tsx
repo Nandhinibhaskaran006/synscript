@@ -58,9 +58,13 @@ export function AppSidebar() {
         </Link>
       </nav>
       <Link to="/profile" className="p-3 border-t border-white/5 flex items-center gap-3 hover:bg-white/5 transition-colors">
-        <div className="w-8 h-8 rounded-full bg-[#adc6ff]/20 flex items-center justify-center text-[#adc6ff] font-bold">{initial}</div>
-        <div className="flex flex-col">
-          <span className="text-[#e1e2eb] font-semibold text-[12px]">{displayName}</span>
+        {user?.avatar ? (
+          <img src={user.avatar} alt={displayName} className="w-8 h-8 rounded-full object-cover border border-white/10 shrink-0" />
+        ) : (
+          <div className="w-8 h-8 rounded-full bg-[#adc6ff]/20 flex items-center justify-center text-[#adc6ff] font-bold shrink-0">{initial}</div>
+        )}
+        <div className="flex flex-col min-w-0">
+          <span className="text-[#e1e2eb] font-semibold text-[12px] truncate">{displayName}</span>
           <span className="text-[#8c909f] text-[11px] font-mono">Pro Plan</span>
         </div>
       </Link>
