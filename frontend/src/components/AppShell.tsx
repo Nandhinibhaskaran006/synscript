@@ -18,6 +18,7 @@ export function AppSidebar() {
   
   const initial = user?.username ? user.username.charAt(0).toUpperCase() : "U";
   const displayName = user?.username || "Guest";
+  const activeRoomId = typeof window !== "undefined" ? localStorage.getItem("syncscript_active_roomId") : null;
 
   return (
     <aside className="fixed left-0 top-0 bottom-0 flex flex-col w-[260px] bg-[#0F1219] border-r border-white/5 z-40">
@@ -31,6 +32,23 @@ export function AppSidebar() {
         <div className="px-3 mb-2 text-[10px] tracking-wider uppercase text-[#8c909f] font-mono">Overview</div>
         {ITEMS.map((it, i) => {
           const active = it.match ? it.match(path) : path === it.to;
+          if (it.to === "/rooms" && activeRoomId) {
+            return (
+              <Link
+                key={i}
+                to="/room/$roomId"
+                params={{ roomId: activeRoomId }}
+                className={`flex items-center gap-3 px-3 py-2 rounded-md transition-all ${
+                  active
+                    ? "text-[#adc6ff] bg-[#adc6ff]/10 border-l-2 border-[#adc6ff] rounded-r-md"
+                    : "text-[#c2c6d6] hover:bg-white/5 hover:text-[#adc6ff]"
+                }`}
+              >
+                <span className="material-symbols-outlined text-[20px]">{it.icon}</span>
+                <span>{it.label}</span>
+              </Link>
+            );
+          }
           return (
             <Link
               key={i}

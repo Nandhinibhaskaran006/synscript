@@ -12,9 +12,19 @@ const chatMessageSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
-    senderName: {
+    senderId: {
+      type: String,
+    },
+    senderUsername: {
       type: String,
       required: true,
+    },
+    senderName: {
+      type: String,
+    },
+    senderAvatar: {
+      type: String,
+      default: '',
     },
     message: {
       type: String,

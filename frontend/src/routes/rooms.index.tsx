@@ -49,6 +49,9 @@ function RoomsPage() {
     loadRooms();
   }, []);
 
+  const activeRoomId = typeof window !== "undefined" ? localStorage.getItem("syncscript_active_roomId") : null;
+  const activeRoom = activeRoomId ? rooms.find((r) => r.roomId === activeRoomId) : null;
+
   const handleDelete = async (room: Room) => {
     const isOwner = user && room.owner?._id === user._id;
     const confirmMsg = isOwner
@@ -59,7 +62,13 @@ function RoomsPage() {
 
     try {
       await api.delete(`/api/rooms/${room.roomId}`);
-      setRooms(prev => prev.filter(r => r.roomId !== room.roomId));
+      if (typeof window !== "undefined") {
+        if (localStorage.getItem("syncscript_active_roomId") === room.roomId) {
+          localStorage.removeItem("syncscript_active_roomId");
+        }
+        localStorage.removeItem(`syncscript_workspace_${room.roomId}`);
+      }
+      setRooms((prev) => prev.filter((r) => r.roomId !== room.roomId));
     } catch (err: any) {
       alert(err.response?.data?.message || "Failed to delete/leave room");
     }
@@ -82,6 +91,32 @@ function RoomsPage() {
           </Link>
         </header>
 
+        {activeRoom && (
+          <div className="p-4 rounded-xl bg-gradient-to-r from-[#3B82F6]/20 via-[#3B82F6]/10 to-transparent border border-[#3B82F6]/30 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
+              <div>
+                <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#adc6ff]">Active Workspace Session</div>
+                <div className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>{activeRoom.name}</span>
+                  <span className="text-xs font-mono text-[#8c909f]">({activeRoom.language})</span>
+                </div>
+              </div>
+            </div>
+            <Link
+              to="/room/$roomId"
+              params={{ roomId: activeRoom.roomId }}
+              className="px-4 py-2 rounded-lg bg-[#3B82F6] hover:bg-[#2563eb] text-white text-xs font-bold transition-all shadow-md shadow-[#3B82F6]/30 flex items-center gap-1.5"
+            >
+              <span>Resume Active Room</span>
+              <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+            </Link>
+          </div>
+        )}
+
         <section>
           {loading ? (
             <div className="text-center py-10 text-[#8c909f]">Loading rooms...</div>
@@ -99,7 +134,7 @@ function RoomsPage() {
           ) : (
             <>
               <div className="flex items-center gap-3 mb-4">
-                <h2 className="text-lg font-bold">My Rooms</h2>
+                <h2 className="text-lg font-bold">All Rooms</h2>
                 <span className="bg-[#25C2A0]/10 text-[#25C2A0] text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                   <span className="w-1.5 h-1.5 bg-[#25C2A0] rounded-full animate-pulse"></span>
                   {rooms.length}

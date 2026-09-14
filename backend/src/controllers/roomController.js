@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const Room = require('../models/Room');
 const SessionHistory = require('../models/SessionHistory');
+const ChatMessage = require('../models/ChatMessage');
 const { replaceRoomFiles } = require('../utils/roomFiles');
 
 // @desc    Create a new room
@@ -129,6 +130,7 @@ const saveSession = async (req, res) => {
       code: code || room.currentCode,
       language: language || room.language,
       label: label || `Snapshot ${new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}`,
+      files: Array.isArray(req.body.files) ? req.body.files : (room.files || []),
     });
 
     res.status(201).json({ message: 'Session saved successfully', snapshot });
@@ -268,6 +270,9 @@ const deleteRoom = async (req, res) => {
       // Delete session history
       await SessionHistory.deleteMany({ roomId });
 
+      // Delete chat messages
+      await ChatMessage.deleteMany({ roomId });
+
       // Delete the room itself
       await Room.deleteOne({ roomId });
 
@@ -287,6 +292,47 @@ const deleteRoom = async (req, res) => {
   }
 };
 
+// @desc    Get chat message history for a room
+// @route   GET /api/rooms/:roomId/messages
+// @access  Private
+const getRoomMessages = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const messages = await ChatMessage.find({ roomId })
+      .populate('sender', 'username email avatar')
+      .sort({ createdAt: 1 })
+      .limit(300);
+
+    const formattedMessages = messages.map((msg) => {
+      const senderObj = msg.sender && typeof msg.sender === 'object' ? msg.sender : null;
+      const senderId = senderObj?._id?.toString() || msg.senderId || (typeof msg.sender === 'string' ? msg.sender : '');
+      const senderUsername = msg.senderUsername || msg.senderName || senderObj?.username || 'Collaborator';
+      const senderAvatar = msg.senderAvatar || senderObj?.avatar || '';
+
+      return {
+        _id: msg._id,
+        roomId: msg.roomId,
+        sender: senderId,
+        senderId,
+        userId: senderId,
+        senderUsername,
+        username: senderUsername,
+        senderName: senderUsername,
+        senderAvatar,
+        avatar: senderAvatar,
+        message: msg.message,
+        createdAt: msg.createdAt,
+        updatedAt: msg.updatedAt,
+      };
+    });
+
+    res.status(200).json(formattedMessages);
+  } catch (error) {
+    console.error('getRoomMessages error:', error.message);
+    res.status(500).json({ message: 'Failed to fetch chat messages' });
+  }
+};
+
 module.exports = {
   createRoom,
   joinRoom,
@@ -297,4 +343,5 @@ module.exports = {
   getSystemStats,
   saveRoomFiles,
   deleteRoom,
+  getRoomMessages,
 };

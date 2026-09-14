@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 const Room = require('../models/Room');
 const ChatMessage = require('../models/ChatMessage');
 const { upsertRoomFileContent } = require('../utils/roomFiles');
@@ -84,7 +85,7 @@ function removeSocketFromRoom(io, socket, roomId) {
 
 const editorSocket = (io) => {
   // Socket.io JWT auth middleware
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const token = socket.handshake.auth?.token;
     if (!token) {
       return next(new Error('Authentication error: No token'));
@@ -92,6 +93,16 @@ const editorSocket = (io) => {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       socket.userId = decoded.id;
+
+      const user = await User.findById(decoded.id).select('username email avatar');
+      if (user) {
+        socket.user = user;
+        socket.username = user.username;
+        socket.avatar = user.avatar || '';
+      } else {
+        socket.username = socket.handshake.auth?.username || 'Collaborator';
+        socket.avatar = '';
+      }
       next();
     } catch (err) {
       return next(new Error('Authentication error: Invalid token'));
@@ -288,19 +299,37 @@ const editorSocket = (io) => {
       try {
         if (!message || !message.trim()) return;
 
-        const username = socket.username || 'Anonymous';
+        let user = socket.user;
+        if (!user && socket.userId) {
+          user = await User.findById(socket.userId).select('username email avatar');
+        }
+
+        const senderId = socket.userId ? socket.userId.toString() : '';
+        const senderUsername = user?.username || socket.username || socket.handshake.auth?.username || 'Collaborator';
+        const senderAvatar = user?.avatar || socket.avatar || '';
 
         // Persist to DB
         const saved = await ChatMessage.create({
           roomId,
           sender: socket.userId,
-          senderName: username,
+          senderId,
+          senderUsername,
+          senderName: senderUsername,
+          senderAvatar,
           message: message.trim(),
         });
 
         const payload = {
           _id: saved._id,
-          senderName: username,
+          roomId: saved.roomId,
+          sender: senderId,
+          senderId,
+          userId: senderId,
+          senderUsername,
+          username: senderUsername,
+          senderName: senderUsername,
+          senderAvatar,
+          avatar: senderAvatar,
           message: saved.message,
           createdAt: saved.createdAt,
         };

@@ -10,6 +10,7 @@ const {
   getSystemStats,
   saveRoomFiles,
   deleteRoom,
+  getRoomMessages,
 } = require('../controllers/roomController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -42,5 +43,8 @@ router.post('/:roomId/save', saveSession);
 
 // @route   GET /api/rooms/:roomId/history
 router.get('/:roomId/history', getVersionHistory);
+
+// @route   GET /api/rooms/:roomId/messages
+router.get('/:roomId/messages', getRoomMessages);
 
 module.exports = router;

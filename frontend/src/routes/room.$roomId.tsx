@@ -1,6 +1,7 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../components/AppShell";
+import { QuickOpenModal } from "../components/QuickOpenModal";
 import { addMemberToRoom } from "../lib/user-rooms";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
@@ -10,6 +11,19 @@ import type { editor, IDisposable } from "monaco-editor";
 import { defineCustomTheme } from "../lib/monaco-theme";
 
 // ── Types ──────────────────────────────────────────────────────────────────
+type DiffLine = {
+  type: "added" | "deleted" | "unchanged";
+  content: string;
+  oldLineNumber?: number;
+  newLineNumber?: number;
+};
+
+type DiffHunk = {
+  oldStart: number;
+  newStart: number;
+  lines: DiffLine[];
+};
+
 type FileNode = {
   path: string;
   name: string;
@@ -18,6 +32,18 @@ type FileNode = {
   isOpen?: boolean; // For folders
 };
 type FileSystem = Record<string, FileNode>;
+
+type ExtensionItem = {
+  id: string;
+  name: string;
+  publisher: string;
+  desc: string;
+  installed: boolean;
+  enabled: boolean;
+  icon: string;
+  category: string;
+  version: string;
+};
 
 // ── Extension → Language mapping ───────────────────────────────────────────
 function getLanguageFromExtension(path: string): string {
@@ -71,6 +97,105 @@ function getLanguageLabel(langId: string): string {
   return labels[langId] ?? langId.charAt(0).toUpperCase() + langId.slice(1);
 }
 
+// ── Helper: Highlight matching substring ───────────────────────────────────
+function HighlightText({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return <>{text}</>;
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const idx = lowerText.indexOf(lowerQuery);
+  if (idx === -1) return <>{text}</>;
+  const before = text.slice(0, idx);
+  const match = text.slice(idx, idx + query.length);
+  const after = text.slice(idx + query.length);
+  return (
+    <>
+      {before}
+      <span className="bg-amber-400/30 text-amber-200 font-semibold px-0.5 rounded">
+        {match}
+      </span>
+      {after}
+    </>
+  );
+}
+
+// ── Helper: Lightweight Markdown Preview Viewer ────────────────────────────
+function MarkdownViewer({ content }: { content: string }) {
+  const lines = content.split("\n");
+  let inCodeBlock = false;
+  let codeBlockLang = "";
+  let codeBlockLines: string[] = [];
+
+  const elements: React.ReactNode[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line.startsWith("```")) {
+      if (inCodeBlock) {
+        elements.push(
+          <div key={`code-${i}`} className="my-3 rounded-lg overflow-hidden border border-white/10 bg-[#0d1117]">
+            {codeBlockLang && (
+              <div className="px-3 py-1 bg-white/5 border-b border-white/5 text-[10px] uppercase font-mono text-[#8c909f]">
+                {codeBlockLang}
+              </div>
+            )}
+            <pre className="p-3 text-xs font-mono text-[#e1e2eb] overflow-x-auto whitespace-pre">
+              {codeBlockLines.join("\n")}
+            </pre>
+          </div>
+        );
+        inCodeBlock = false;
+        codeBlockLines = [];
+        codeBlockLang = "";
+      } else {
+        inCodeBlock = true;
+        codeBlockLang = line.slice(3).trim();
+        codeBlockLines = [];
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeBlockLines.push(line);
+      continue;
+    }
+
+    if (line.startsWith("# ")) {
+      elements.push(<h1 key={i} className="text-xl font-bold text-white border-b border-white/10 pb-2 mb-3 mt-4">{line.slice(2)}</h1>);
+    } else if (line.startsWith("## ")) {
+      elements.push(<h2 key={i} className="text-lg font-bold text-white border-b border-white/10 pb-1 mb-2 mt-4">{line.slice(3)}</h2>);
+    } else if (line.startsWith("### ")) {
+      elements.push(<h3 key={i} className="text-base font-semibold text-white mb-2 mt-3">{line.slice(4)}</h3>);
+    } else if (line.startsWith("> ")) {
+      elements.push(
+        <blockquote key={i} className="border-l-4 border-[#3B82F6] pl-3 py-1 my-2 text-xs text-[#adc6ff] bg-[#3B82F6]/5 rounded-r">
+          {line.slice(2)}
+        </blockquote>
+      );
+    } else if (line.startsWith("- ") || line.startsWith("* ")) {
+      elements.push(
+        <li key={i} className="text-xs text-[#c2c6d6] ml-4 list-disc my-0.5">
+          {line.slice(2)}
+        </li>
+      );
+    } else if (line.trim() === "") {
+      elements.push(<div key={i} className="h-2" />);
+    } else {
+      elements.push(
+        <p key={i} className="text-xs text-[#c2c6d6] leading-relaxed my-1">
+          {line}
+        </p>
+      );
+    }
+  }
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto overflow-y-auto h-full custom-scrollbar text-[#e1e2eb] select-text">
+      {elements}
+    </div>
+  );
+}
+
 // ── Monaco Editor options ──────────────────────────────────────────────────
 const EDITOR_OPTIONS: editor.IStandaloneEditorConstructionOptions = {
   fontSize: 14,
@@ -122,6 +247,211 @@ const EDITOR_OPTIONS: editor.IStandaloneEditorConstructionOptions = {
 // ── Default file set ────────────────────────────────────────────────────────
 const DEFAULT_FILES: FileSystem = {};
 
+const DEFAULT_EXTENSIONS: ExtensionItem[] = [
+  {
+    id: "prettier",
+    name: "Prettier - Code Formatter",
+    publisher: "Prettier",
+    desc: "Opinionated code formatter with automatic multi-language formatting",
+    installed: true,
+    enabled: true,
+    icon: "auto_fix_high",
+    category: "Formatters",
+    version: "v3.2.5",
+  },
+  {
+    id: "javascript",
+    name: "JavaScript & TypeScript",
+    publisher: "SynScript",
+    desc: "IntelliSense, ES6+ Snippets, Linting, and Type Checking",
+    installed: true,
+    enabled: true,
+    icon: "javascript",
+    category: "Programming Languages",
+    version: "v2.4.0",
+  },
+  {
+    id: "python",
+    name: "Python",
+    publisher: "Microsoft",
+    desc: "IntelliSense, Syntax Highlighting, Formatting and Python Tooling",
+    installed: false,
+    enabled: false,
+    icon: "terminal",
+    category: "Programming Languages",
+    version: "v2024.1.0",
+  },
+  {
+    id: "java",
+    name: "Language Support for Java",
+    publisher: "Red Hat",
+    desc: "Java class templates, Syntax, Diagnostics & Code Actions",
+    installed: false,
+    enabled: false,
+    icon: "coffee",
+    category: "Programming Languages",
+    version: "v1.28.0",
+  },
+  {
+    id: "markdown",
+    name: "Markdown Preview Enhanced",
+    publisher: "SynScript",
+    desc: "Live Markdown rendering preview, outline, and syntax styling",
+    installed: true,
+    enabled: true,
+    icon: "article",
+    category: "Formatters",
+    version: "v1.8.2",
+  },
+];
+
+function computeLineDiff(oldText: string, newText: string): { hunks: DiffHunk[]; additions: number; deletions: number } {
+  const oldLines = oldText ? oldText.split("\n") : [];
+  const newLines = newText ? newText.split("\n") : [];
+  const N = oldLines.length;
+  const M = newLines.length;
+
+  if (N === 0 && M === 0) return { hunks: [], additions: 0, deletions: 0 };
+  if (N === 0) {
+    return {
+      hunks: [
+        {
+          oldStart: 1,
+          newStart: 1,
+          lines: newLines.map((l, i) => ({ type: "added" as const, content: l, newLineNumber: i + 1 })),
+        },
+      ],
+      additions: M,
+      deletions: 0,
+    };
+  }
+  if (M === 0) {
+    return {
+      hunks: [
+        {
+          oldStart: 1,
+          newStart: 1,
+          lines: oldLines.map((l, i) => ({ type: "deleted" as const, content: l, oldLineNumber: i + 1 })),
+        },
+      ],
+      additions: 0,
+      deletions: N,
+    };
+  }
+
+  // Optimize for large file content
+  if (N * M > 250000) {
+    const hunks: DiffHunk[] = [];
+    const maxLines = Math.max(N, M);
+    const diffLines: DiffLine[] = [];
+    for (let k = 0; k < maxLines; k++) {
+      if (k < N && k < M) {
+        if (oldLines[k] !== newLines[k]) {
+          diffLines.push({ type: "deleted", content: oldLines[k], oldLineNumber: k + 1 });
+          diffLines.push({ type: "added", content: newLines[k], newLineNumber: k + 1 });
+        }
+      } else if (k < N) {
+        diffLines.push({ type: "deleted", content: oldLines[k], oldLineNumber: k + 1 });
+      } else if (k < M) {
+        diffLines.push({ type: "added", content: newLines[k], newLineNumber: k + 1 });
+      }
+    }
+    if (diffLines.length > 0) {
+      hunks.push({ oldStart: 1, newStart: 1, lines: diffLines });
+    }
+    let adds = 0, dels = 0;
+    diffLines.forEach((l) => { if (l.type === "added") adds++; if (l.type === "deleted") dels++; });
+    return { hunks, additions: adds, deletions: dels };
+  }
+
+  const dp: number[][] = Array.from({ length: N + 1 }, () => new Array(M + 1).fill(0));
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < M; j++) {
+      if (oldLines[i] === newLines[j]) {
+        dp[i + 1][j + 1] = dp[i][j] + 1;
+      } else {
+        dp[i + 1][j + 1] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+  }
+
+  const diffLines: DiffLine[] = [];
+  let i = N, j = M;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+      diffLines.unshift({
+        type: "unchanged",
+        content: oldLines[i - 1],
+        oldLineNumber: i,
+        newLineNumber: j,
+      });
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      diffLines.unshift({
+        type: "added",
+        content: newLines[j - 1],
+        newLineNumber: j,
+      });
+      j--;
+    } else if (i > 0 && (j === 0 || dp[i][j - 1] < dp[i - 1][j])) {
+      diffLines.unshift({
+        type: "deleted",
+        content: oldLines[i - 1],
+        oldLineNumber: i,
+      });
+      i--;
+    }
+  }
+
+  let additions = 0;
+  let deletions = 0;
+  diffLines.forEach((l) => {
+    if (l.type === "added") additions++;
+    if (l.type === "deleted") deletions++;
+  });
+
+  const hunks: DiffHunk[] = [];
+  let currentHunkLines: DiffLine[] = [];
+  let inHunk = false;
+
+  diffLines.forEach((line, idx) => {
+    if (line.type !== "unchanged") {
+      if (!inHunk) {
+        inHunk = true;
+        currentHunkLines = [];
+        if (idx > 0 && diffLines[idx - 1].type === "unchanged") {
+          currentHunkLines.push(diffLines[idx - 1]);
+        }
+      }
+      currentHunkLines.push(line);
+    } else if (inHunk) {
+      currentHunkLines.push(line);
+      const firstOld = currentHunkLines.find((l) => l.oldLineNumber)?.oldLineNumber || 1;
+      const firstNew = currentHunkLines.find((l) => l.newLineNumber)?.newLineNumber || 1;
+      hunks.push({
+        oldStart: firstOld,
+        newStart: firstNew,
+        lines: currentHunkLines,
+      });
+      currentHunkLines = [];
+      inHunk = false;
+    }
+  });
+
+  if (inHunk && currentHunkLines.length > 0) {
+    const firstOld = currentHunkLines.find((l) => l.oldLineNumber)?.oldLineNumber || 1;
+    const firstNew = currentHunkLines.find((l) => l.newLineNumber)?.newLineNumber || 1;
+    hunks.push({
+      oldStart: firstOld,
+      newStart: firstNew,
+      lines: currentHunkLines,
+    });
+  }
+
+  return { hunks, additions, deletions };
+}
+
 function filesFromApi(raw: any[]): FileSystem {
   const next: FileSystem = {};
   if (!Array.isArray(raw)) return next;
@@ -148,6 +478,80 @@ function serializeFiles(fs: FileSystem) {
   }));
 }
 
+type ChatMsg = {
+  _id?: string;
+  roomId?: string;
+  senderId: string;
+  senderUsername: string;
+  senderAvatar?: string;
+  text: string;
+  time: string;
+  color: string;
+  avatarBg: string;
+  createdAt?: string;
+};
+
+// Deterministic color assignment based on userId / username hash
+function getUserColor(userId: string) {
+  const colors = [
+    { bg: "bg-cyan-500/20", text: "text-cyan-400", border: "border-cyan-500/30", label: "text-cyan-500", labelText: "Cyan", hex: "#06b6d4" },
+    { bg: "bg-green-500/20", text: "text-green-400", border: "border-green-500/30", label: "text-green-500", labelText: "Green", hex: "#22c55e" },
+    { bg: "bg-violet-500/20", text: "text-violet-400", border: "border-violet-500/30", label: "text-violet-500", labelText: "Violet", hex: "#8b5cf6" },
+    { bg: "bg-amber-500/20", text: "text-amber-400", border: "border-amber-500/30", label: "text-amber-500", labelText: "Amber", hex: "#f59e0b" },
+    { bg: "bg-rose-500/20", text: "text-rose-400", border: "border-rose-500/30", label: "text-rose-500", labelText: "Rose", hex: "#f43f5e" },
+    { bg: "bg-blue-500/20", text: "text-blue-400", border: "border-blue-500/30", label: "text-blue-500", labelText: "Blue", hex: "#3b82f6" },
+    { bg: "bg-emerald-500/20", text: "text-emerald-400", border: "border-emerald-500/30", label: "text-emerald-500", labelText: "Emerald", hex: "#10b981" },
+    { bg: "bg-orange-500/20", text: "text-orange-400", border: "border-orange-500/30", label: "text-orange-500", labelText: "Orange", hex: "#f97316" },
+  ];
+
+  let hash = 0;
+  const str = userId || "anonymous";
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  const index = Math.abs(hash) % colors.length;
+  return colors[index];
+}
+
+function formatChatMessage(raw: any): ChatMsg {
+  const senderObj = typeof raw.sender === "object" ? raw.sender : null;
+  const senderId =
+    senderObj?._id ||
+    (typeof raw.sender === "string" ? raw.sender : "") ||
+    raw.senderId ||
+    raw.userId ||
+    "";
+  const senderUsername =
+    raw.senderUsername ||
+    raw.username ||
+    raw.senderName ||
+    senderObj?.username ||
+    "Collaborator";
+  const senderAvatar =
+    raw.senderAvatar ||
+    raw.avatar ||
+    senderObj?.avatar ||
+    "";
+
+  const userColor = getUserColor(senderUsername || senderId);
+  const createdAt = raw.createdAt ? new Date(raw.createdAt) : new Date();
+  const time = createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  return {
+    _id: raw._id,
+    roomId: raw.roomId,
+    senderId: String(senderId),
+    senderUsername,
+    senderAvatar,
+    text: raw.message || raw.text || "",
+    time,
+    color: userColor.text,
+    avatarBg: userColor.bg,
+    createdAt: raw.createdAt,
+  };
+}
+
 export const Route = createFileRoute("/room/$roomId")({
   head: ({ params }) => ({
     meta: [{ title: `Room ${params.roomId} | SYNCSCRIPT` }],
@@ -155,33 +559,56 @@ export const Route = createFileRoute("/room/$roomId")({
   component: RoomPage,
 });
 
-type Msg = { role: "user" | "ai"; text: string };
-
-
 function RoomPage() {
   const { roomId } = Route.useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [room, setRoom] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   // ── Sidebar active tab state ─────────────────────────────────────────────
   const [activeSidebarTab, setActiveSidebarTab] = useState<"explorer" | "search" | "sourceControl" | "extensions" | "settings">("explorer");
+  
+  // ── Search Panel state ───────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
+  const [searchWholeWord, setSearchWholeWord] = useState(false);
+  const [searchRegex, setSearchRegex] = useState(false);
+  const [searchExpandedFiles, setSearchExpandedFiles] = useState<Record<string, boolean>>({});
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Explorer File Search state ───────────────────────────────────────────
+  const [explorerSearchQuery, setExplorerSearchQuery] = useState("");
+
+  // ── Quick Open modal state ───────────────────────────────────────────────
+  const [quickOpenOpen, setQuickOpenOpen] = useState(false);
+
+  // ── Extensions state with per-user storage ───────────────────────────────
+  const userStorageKey = `syncscript_extensions_${user?._id || user?.id || "guest"}`;
   const [extensionsSearch, setExtensionsSearch] = useState("");
-  const [extensions, setExtensions] = useState([
-    { id: "prettier", name: "Prettier - Code formatter", publisher: "Prettier", desc: "Code formatter using opinionated code style", installed: true, enabled: true, icon: "auto_fix_high" },
-    { id: "eslint", name: "ESLint", publisher: "Microsoft", desc: "Integrates ESLint JavaScript into VS Code", installed: true, enabled: true, icon: "fact_check" },
-    { id: "python", name: "Python", publisher: "Microsoft", desc: "IntelliSense, Linting, Debugging, code browsing", installed: false, enabled: false, icon: "terminal" },
-    { id: "java", name: "Language Support for Java", publisher: "Red Hat", desc: "Java Linting, IntelliSense, formatting", installed: false, enabled: false, icon: "code" },
-    { id: "live-server", name: "Live Server", publisher: "Ritwick Dey", desc: "Launch a local development server with live reload", installed: false, enabled: false, icon: "wifi_tethering" },
-  ]);
+  const [extensionsActiveCategory, setExtensionsActiveCategory] = useState<"all" | "installed" | "enabled">("all");
+  const [extensions, setExtensions] = useState<ExtensionItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(userStorageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return DEFAULT_EXTENSIONS;
+  });
+
+  // Markdown Preview State
+  const [isPreviewingMarkdown, setIsPreviewingMarkdown] = useState(false);
 
   // ── Active file system state & Open Tabs state ─────────────────────────────
   const [files, setFiles] = useState<FileSystem>(DEFAULT_FILES);
+  const [sessionBaseline, setSessionBaseline] = useState<FileSystem>({});
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [explorerSelection, setExplorerSelection] = useState<string | null>(null);
   const [modifiedFiles, setModifiedFiles] = useState<Set<string>>(new Set());
+  const [expandedDiffs, setExpandedDiffs] = useState<Record<string, boolean>>({});
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [remoteCursors, setRemoteCursors] = useState<Map<string, { lineNumber: number; column: number; color: string; filePath: string }>>(new Map());
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -196,11 +623,61 @@ function RoomPage() {
   const isRemoteUpdate = useRef(false);
   const activeFileRef = useRef<string | null>(null);
   const filesRef = useRef<FileSystem>(DEFAULT_FILES);
+  const openTabsRef = useRef<string[]>([]);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const workspaceReadyRef = useRef(false);
   const cursorChangeListenerRef = useRef<IDisposable | null>(null);
   const localCursorLineRef = useRef<number>(0);
   const monacoModelsRef = useRef<Map<string, editor.ITextModel>>(new Map());
+
+  // ── Save workspace state to localStorage ───────────────────────────────────
+  const saveWorkspaceState = useCallback(
+    (patch?: Partial<{
+      openTabs: string[];
+      activeFile: string | null;
+      cursorPosition: { lineNumber: number; column: number } | null;
+      files: FileSystem;
+    }>) => {
+      try {
+        const key = `syncscript_workspace_${roomId}`;
+        const existingRaw = localStorage.getItem(key);
+        const existing = existingRaw ? JSON.parse(existingRaw) : {};
+        const curFiles = patch?.files || filesRef.current;
+        const curTabs = patch?.openTabs || openTabsRef.current;
+        const curActive = patch?.activeFile !== undefined ? patch.activeFile : activeFileRef.current;
+        const curCursor = patch?.cursorPosition !== undefined ? patch.cursorPosition : savedCursorPosRef.current;
+
+        const expandedFolders: string[] = [];
+        for (const [p, n] of Object.entries(curFiles)) {
+          if (n.type === "folder" && n.isOpen) {
+            expandedFolders.push(p);
+          }
+        }
+
+        const nextState = {
+          ...existing,
+          roomId,
+          openTabs: curTabs,
+          activeFile: curActive,
+          cursorPosition: curCursor,
+          expandedFolders,
+          files: curFiles,
+          lastUpdated: Date.now(),
+        };
+        localStorage.setItem(key, JSON.stringify(nextState));
+      } catch (_) {}
+    },
+    [roomId]
+  );
+
+  // Sync openTabs, activeFile, files to ref and localStorage
+  useEffect(() => {
+    openTabsRef.current = openTabs;
+    activeFileRef.current = activeFile;
+    if (workspaceReadyRef.current) {
+      saveWorkspaceState({ openTabs, activeFile, files });
+    }
+  }, [openTabs, activeFile, files, saveWorkspaceState]);
   
   // ── Phase 6: Bottom Panel & Code Execution State ─────────────────────────
   const [isBottomPanelOpen, setIsBottomPanelOpen] = useState(false);
@@ -219,11 +696,23 @@ function RoomPage() {
   // ── Collapsible Live Chat State & Messages ───────────────────────────────
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [chatInput, setChatInput] = useState("");
-  const [chatMessages, setChatMessages] = useState<Array<{ sender: string; time: string; text: string; color: string }>>([
-    { sender: "System", time: "14:22", text: "Working on the session logic, room environment initialized.", color: "text-violet-400" },
-    { sender: "Alex", time: "14:24", text: "Just pushed the updates for the project files. Check it out in index.js", color: "text-orange-400" },
-    { sender: "Sarah", time: "14:25", text: "Looks good! Testing real-time collaboration.", color: "text-cyan-400" }
-  ]);
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
+  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, isChatOpen]);
+
+  const handleIncomingChatMessage = useCallback((payload: any) => {
+    if (!payload) return;
+    const formatted = formatChatMessage(payload);
+    setChatMessages((prev) => {
+      if (prev.some((m) => m._id && formatted._id && m._id === formatted._id)) {
+        return prev;
+      }
+      return [...prev, formatted];
+    });
+  }, []);
 
   // ── Invite Dropdown State ────────────────────────────────────────────────
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -254,28 +743,14 @@ function RoomPage() {
     }
   };
 
-  const handleSendMessage = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const trimmed = chatInput.trim();
-    if (!trimmed) return;
-    const now = new Date();
-    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    setChatMessages(prev => [
-      ...prev,
-      {
-        sender: user?.username || "Me",
-        time: timeStr,
-        text: trimmed,
-        color: "text-primary",
-      }
-    ]);
-    setChatInput("");
-  };
+  // ── Last seen files snapshot for Source Control badge tracking ───────────
+  const [lastSeenFiles, setLastSeenFiles] = useState<Record<string, string>>({});
+  const handleRunCodeRef = useRef<() => void>(() => {});
+  const handleSaveFileRef = useRef<() => void>(() => {});
 
   const isDraggingPanelRef = useRef(false);
   const startDragYRef = useRef(0);
   const startHeightRef = useRef(240);
-  const handleRunCodeRef = useRef<() => void>(() => {});
 
   const handleResizeMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -353,20 +828,515 @@ function RoomPage() {
 
   handleRunCodeRef.current = handleRunCode;
 
-  // Global shortcut for running code (Ctrl+Enter / Cmd+Enter / F5)
+  // ── File persistence handler ──────────────────────────────────────────────
+  const persistFiles = useCallback(
+    (nextFiles: FileSystem, immediate = false) => {
+      if (!workspaceReadyRef.current) return;
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+      const write = () => {
+        api.put(`/api/rooms/${roomId}/files`, { files: serializeFiles(nextFiles) }).catch((err: any) => {
+          console.error("Failed to persist room files", err);
+        });
+      };
+      if (immediate) write();
+      else {
+        persistTimerRef.current = setTimeout(write, 400);
+      }
+    },
+    [roomId],
+  );
+
+  // ── Save current active file (VS Code style Cmd+S / Ctrl+S) ───────────────
+  const handleSaveFile = useCallback(() => {
+    const currentActive = activeFileRef.current;
+    if (!currentActive) return;
+
+    const editor = editorRef.current;
+    const currentVal = editor ? editor.getValue() : (filesRef.current[currentActive]?.content ?? "");
+
+    const nextFiles: FileSystem = {
+      ...filesRef.current,
+      [currentActive]: {
+        ...filesRef.current[currentActive],
+        content: currentVal,
+      },
+    };
+
+    filesRef.current = nextFiles;
+    setFiles(nextFiles);
+
+    // Mark active file as clean/saved
+    originalContents.current[currentActive] = currentVal;
+    setModifiedFiles((prev) => {
+      const next = new Set(prev);
+      next.delete(currentActive);
+      return next;
+    });
+
+    // Immediately persist latest room files to backend without snapshot popup
+    persistFiles(nextFiles, true);
+  }, [persistFiles]);
+
+  handleSaveFileRef.current = handleSaveFile;
+
+  // ── Switch active file (auto-saves previous active file) ───────────────────
+  const handleSelectFile = useCallback((path: string) => {
+    const prevActive = activeFileRef.current;
+    if (prevActive && prevActive !== path) {
+      const editor = editorRef.current;
+      const currentVal = editor ? editor.getValue() : (filesRef.current[prevActive]?.content ?? "");
+      if (filesRef.current[prevActive]?.content !== currentVal) {
+        const nextFiles: FileSystem = {
+          ...filesRef.current,
+          [prevActive]: { ...filesRef.current[prevActive], content: currentVal },
+        };
+        filesRef.current = nextFiles;
+        setFiles(nextFiles);
+        persistFiles(nextFiles, true);
+      } else {
+        persistFiles(filesRef.current, true);
+      }
+    }
+    setActiveFile(path);
+    setOpenTabs((prev) => (prev.includes(path) ? prev : [...prev, path]));
+    setExplorerSelection(path);
+  }, [persistFiles]);
+
+  // ── Jump to specific location in Monaco editor ───────────────────────────
+  const jumpToLocation = useCallback((filePath: string, lineNumber: number, column = 1) => {
+    handleSelectFile(filePath);
+    setTimeout(() => {
+      const editor = editorRef.current;
+      if (editor) {
+        editor.revealLineInCenter(lineNumber);
+        editor.setPosition({ lineNumber, column });
+        editor.focus();
+      }
+    }, 60);
+  }, [handleSelectFile]);
+
+  // ── Prettier / Document formatting integration ───────────────────────────
+  const handleFormatDocument = useCallback(() => {
+    const prettierExt = extensions.find((e) => e.id === "prettier");
+    if (!prettierExt?.installed || !prettierExt?.enabled) {
+      alert("Prettier extension is disabled or not installed. Enable it in the Extensions panel to format documents.");
+      return;
+    }
+    const editor = editorRef.current;
+    if (!editor || !activeFile) return;
+
+    const currentVal = editor.getValue();
+    const ext = activeFile.split(".").pop()?.toLowerCase();
+
+    // Trigger Monaco's native document format action
+    const action = editor.getAction("editor.action.formatDocument");
+    if (action) {
+      action.run().catch(() => {});
+    }
+
+    // Direct JSON tidy formatter if applicable
+    if (ext === "json") {
+      try {
+        const parsed = JSON.parse(currentVal);
+        const formatted = JSON.stringify(parsed, null, 2);
+        if (formatted !== currentVal) {
+          editor.setValue(formatted);
+        }
+      } catch (_) {}
+    }
+  }, [extensions, activeFile]);
+
+  // ── Extensions persistence helper ─────────────────────────────────────────
+  const updateExtensions = useCallback((updater: (prev: ExtensionItem[]) => ExtensionItem[]) => {
+    setExtensions((prev) => {
+      const next = updater(prev);
+      try {
+        localStorage.setItem(userStorageKey, JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
+  }, [userStorageKey]);
+
+  // ── Source Control tracking & actions ─────────────────────────────────────
+  const sourceControlChanges = useMemo(() => {
+    const added: string[] = [];
+    const modified: string[] = [];
+    const deleted: string[] = [];
+
+    for (const [path, node] of Object.entries(files)) {
+      if (node.type !== "file") continue;
+      if (!sessionBaseline[path]) {
+        added.push(path);
+      } else if (node.content !== sessionBaseline[path]?.content) {
+        modified.push(path);
+      }
+    }
+
+    for (const [path, node] of Object.entries(sessionBaseline)) {
+      if (node.type !== "file") continue;
+      if (!files[path]) {
+        deleted.push(path);
+      }
+    }
+
+    return {
+      added,
+      modified,
+      deleted,
+      total: added.length + modified.length + deleted.length,
+    };
+  }, [files, sessionBaseline]);
+
+  // ── Sync seen files snapshot when opening Source Control tab ─────────────
+  useEffect(() => {
+    if (activeSidebarTab === "sourceControl") {
+      const snapshot: Record<string, string> = {};
+      for (const [p, n] of Object.entries(files)) {
+        if (n.type === "file") snapshot[p] = n.content ?? "";
+      }
+      setLastSeenFiles(snapshot);
+    }
+  }, [activeSidebarTab, files]);
+
+  // ── Compute unseen changes count for the sidebar icon badge ───────────────
+  const unseenChangesCount = useMemo(() => {
+    if (activeSidebarTab === "sourceControl") return 0;
+
+    let count = 0;
+    for (const [path, node] of Object.entries(files)) {
+      if (node.type !== "file") continue;
+      const isChangedFromBaseline = !sessionBaseline[path] || node.content !== sessionBaseline[path]?.content;
+      if (!isChangedFromBaseline) continue;
+
+      const lastContent = lastSeenFiles[path];
+      if (lastContent === undefined || lastContent !== node.content) {
+        count++;
+      }
+    }
+
+    for (const [path, node] of Object.entries(sessionBaseline)) {
+      if (node.type !== "file") continue;
+      if (!files[path]) {
+        if (lastSeenFiles[path] !== undefined) {
+          count++;
+        }
+      }
+    }
+
+    return count;
+  }, [files, sessionBaseline, lastSeenFiles, activeSidebarTab]);
+
+  const discardSingleChange = useCallback(
+    (path: string, type: "added" | "modified" | "deleted") => {
+      if (type === "modified") {
+        const baselineContent = sessionBaseline[path]?.content ?? originalContents.current[path] ?? "";
+
+        setFiles((prev) => {
+          const existing = prev[path];
+          if (!existing) return prev;
+          const next = {
+            ...prev,
+            [path]: { ...existing, content: baselineContent },
+          };
+          filesRef.current = next;
+          persistFiles(next, true);
+          saveWorkspaceState({ files: next });
+          return next;
+        });
+
+        originalContents.current[path] = baselineContent;
+        setModifiedFiles((prev) => {
+          const next = new Set(prev);
+          next.delete(path);
+          return next;
+        });
+        setLastSeenFiles((prev) => ({ ...prev, [path]: baselineContent }));
+
+        // Update active Monaco model and editor
+        const model = monacoModelsRef.current.get(path);
+        if (model && !model.isDisposed()) {
+          if (model.getValue() !== baselineContent) {
+            model.setValue(baselineContent);
+          }
+        }
+        if (editorRef.current && activeFileRef.current === path) {
+          if (editorRef.current.getValue() !== baselineContent) {
+            editorRef.current.setValue(baselineContent);
+          }
+        }
+      } else if (type === "added") {
+        const fileName = filesRef.current[path]?.name || path;
+        if (!window.confirm(`Discarding will permanently delete newly added file "${fileName}". Are you sure?`)) {
+          return;
+        }
+        setFiles((prev) => {
+          const next = { ...prev };
+          delete next[path];
+          filesRef.current = next;
+          persistFiles(next, true);
+          saveWorkspaceState({ files: next });
+          return next;
+        });
+        setOpenTabs((prev) => prev.filter((t) => t !== path));
+        if (activeFileRef.current === path) {
+          const remaining = openTabsRef.current.filter((t) => t !== path);
+          setActiveFile(remaining[0] || null);
+        }
+      } else if (type === "deleted") {
+        const baselineNode = sessionBaseline[path];
+        if (!baselineNode) return;
+        const restoredContent = baselineNode.content ?? "";
+        setFiles((prev) => {
+          const next = { ...prev, [path]: { ...baselineNode } };
+          filesRef.current = next;
+          persistFiles(next, true);
+          saveWorkspaceState({ files: next });
+          return next;
+        });
+        const model = monacoModelsRef.current.get(path);
+        if (model && !model.isDisposed()) {
+          model.setValue(restoredContent);
+        }
+      }
+    },
+    [sessionBaseline, persistFiles, saveWorkspaceState]
+  );
+
+  const discardAllChanges = useCallback(() => {
+    if (sourceControlChanges.total === 0) return;
+    if (!window.confirm("Are you sure you want to discard all uncommitted changes and restore workspace to the latest session snapshot?")) {
+      return;
+    }
+
+    const restored: FileSystem = {};
+    for (const [path, node] of Object.entries(sessionBaseline)) {
+      restored[path] = { ...node };
+    }
+
+    setFiles(restored);
+    filesRef.current = restored;
+    persistFiles(restored, true);
+    saveWorkspaceState({ files: restored });
+
+    const snapshot: Record<string, string> = {};
+    for (const [path, node] of Object.entries(restored)) {
+      if (node.type === "file") {
+        snapshot[path] = node.content ?? "";
+        const model = monacoModelsRef.current.get(path);
+        if (model && !model.isDisposed()) {
+          model.setValue(node.content ?? "");
+        }
+      }
+    }
+
+    if (editorRef.current && activeFileRef.current && restored[activeFileRef.current]) {
+      const activeContent = restored[activeFileRef.current].content ?? "";
+      if (editorRef.current.getValue() !== activeContent) {
+        editorRef.current.setValue(activeContent);
+      }
+    }
+
+    setLastSeenFiles(snapshot);
+    originalContents.current = snapshot;
+    setModifiedFiles(new Set());
+  }, [sourceControlChanges.total, sessionBaseline, persistFiles, saveWorkspaceState]);
+
+  // ── Multi-file Real-time Search computation ───────────────────────────────
+  type SearchMatch = {
+    lineNumber: number;
+    lineContent: string;
+    matchStart: number;
+    matchLength: number;
+  };
+
+  type FileSearchResult = {
+    path: string;
+    name: string;
+    matches: SearchMatch[];
+    fileNameMatch: boolean;
+  };
+
+  const searchResults: FileSearchResult[] = useMemo(() => {
+    const query = searchQuery.trim();
+    if (!query) return [];
+
+    const results: FileSearchResult[] = [];
+
+    let regex: RegExp | null = null;
+    try {
+      if (searchRegex) {
+        regex = new RegExp(query, searchCaseSensitive ? "g" : "gi");
+      } else {
+        const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const pattern = searchWholeWord ? `\\b${escaped}\\b` : escaped;
+        regex = new RegExp(pattern, searchCaseSensitive ? "g" : "gi");
+      }
+    } catch (_) {
+      return [];
+    }
+
+    for (const [path, node] of Object.entries(files)) {
+      if (node.type !== "file") continue;
+
+      const matches: SearchMatch[] = [];
+      const content = node.content || "";
+      const lines = content.split("\n");
+
+      lines.forEach((line, index) => {
+        const lineNum = index + 1;
+        let match: RegExpExecArray | null;
+        regex!.lastIndex = 0;
+        while ((match = regex!.exec(line)) !== null) {
+          matches.push({
+            lineNumber: lineNum,
+            lineContent: line,
+            matchStart: match.index,
+            matchLength: match[0].length,
+          });
+          if (!regex!.global) break;
+        }
+      });
+
+      const fileNameMatch = searchCaseSensitive
+        ? node.name.includes(query)
+        : node.name.toLowerCase().includes(query.toLowerCase());
+
+      if (matches.length > 0 || fileNameMatch) {
+        results.push({
+          path,
+          name: node.name,
+          matches,
+          fileNameMatch,
+        });
+      }
+    }
+
+    return results;
+  }, [files, searchQuery, searchCaseSensitive, searchWholeWord, searchRegex]);
+
+  const totalSearchMatches = useMemo(() => {
+    return searchResults.reduce((acc, r) => acc + r.matches.length + (r.fileNameMatch ? 1 : 0), 0);
+  }, [searchResults]);
+
+  // ── Explorer Search / Filter computation ───────────────────────────────────
+  const explorerFilteredPaths = useMemo(() => {
+    const q = explorerSearchQuery.trim().toLowerCase();
+    if (!q) return null;
+
+    const matchedPaths = new Set<string>();
+
+    for (const [path, node] of Object.entries(files)) {
+      if (node.name.toLowerCase().includes(q) || path.toLowerCase().includes(q)) {
+        matchedPaths.add(path);
+        const parts = path.split("/");
+        let currentPath = "";
+        for (let i = 0; i < parts.length - 1; i++) {
+          currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+          matchedPaths.add(currentPath);
+        }
+      }
+    }
+
+    return matchedPaths;
+  }, [files, explorerSearchQuery]);
+
+  // ── Global keyboard shortcuts (VS Code style) ────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      const isMac = typeof navigator !== "undefined" && navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const isCmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+
+      // Ctrl+P / Cmd+P -> Quick Open
+      if (isCmdOrCtrl && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setQuickOpenOpen(true);
+        return;
+      }
+
+      // Ctrl+S / Cmd+S -> Save Active File (VS Code behavior)
+      if (isCmdOrCtrl && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        handleSaveFileRef.current?.();
+        return;
+      }
+
+      // Ctrl+` / Cmd+` -> Toggle Terminal
+      if (isCmdOrCtrl && (e.key === "`" || e.code === "Backquote")) {
+        e.preventDefault();
+        setIsBottomPanelOpen((prev) => {
+          if (!prev) setBottomPanelTab("terminal");
+          return !prev;
+        });
+        return;
+      }
+
+      // Ctrl+Shift+F / Cmd+Shift+F -> Search panel
+      if (isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setActiveSidebarTab("search");
+        setTimeout(() => {
+          searchInputRef.current?.focus();
+          searchInputRef.current?.select();
+        }, 50);
+        return;
+      }
+
+      // Ctrl+Shift+E -> Explorer panel
+      if (isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        setActiveSidebarTab("explorer");
+        return;
+      }
+
+      // Ctrl+Shift+G -> Source Control panel
+      if (isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === "g") {
+        e.preventDefault();
+        setActiveSidebarTab("sourceControl");
+        return;
+      }
+
+      // Ctrl+Shift+X -> Extensions panel
+      if (isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === "x") {
+        e.preventDefault();
+        setActiveSidebarTab("extensions");
+        return;
+      }
+
+      // Shift+Alt+F -> Format Document
+      if (e.shiftKey && e.altKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        handleFormatDocument();
+        return;
+      }
+
+      // Ctrl+Enter / Cmd+Enter / F5 -> Run Code
+      if ((isCmdOrCtrl && e.key === "Enter") || e.key === "F5") {
         e.preventDefault();
         handleRunCodeRef.current();
-      } else if (e.key === "F5") {
-        e.preventDefault();
-        handleRunCodeRef.current();
+        return;
+      }
+
+      // Ctrl+F / Cmd+F -> When active element is NOT inside Monaco editor, switch to Search panel
+      if (isCmdOrCtrl && !e.shiftKey && e.key.toLowerCase() === "f") {
+        const activeEl = document.activeElement;
+        const isInsideMonaco = activeEl?.closest(".monaco-editor");
+        if (!isInsideMonaco) {
+          e.preventDefault();
+          setActiveSidebarTab("search");
+          setTimeout(() => {
+            searchInputRef.current?.focus();
+            searchInputRef.current?.select();
+          }, 50);
+        }
       }
     };
+
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [handleFormatDocument]);
 
   // Derived values needed by useEffects - declared early to avoid temporal dead zone
   const currentContent = activeFile ? (files[activeFile]?.content ?? "") : "";
@@ -374,31 +1344,6 @@ function RoomPage() {
   
   activeFileRef.current = activeFile;
   filesRef.current = files;
-
-  // Deterministic color assignment based on userId hash
-  function getUserColor(userId: string) {
-    const colors = [
-      { bg: "bg-cyan-500/20", text: "text-cyan-400", border: "border-cyan-500/30", label: "text-cyan-500", labelText: "Cyan", hex: "#06b6d4" },
-      { bg: "bg-green-500/20", text: "text-green-400", border: "border-green-500/30", label: "text-green-500", labelText: "Green", hex: "#22c55e" },
-      { bg: "bg-violet-500/20", text: "text-violet-400", border: "border-violet-500/30", label: "text-violet-500", labelText: "Violet", hex: "#8b5cf6" },
-      { bg: "bg-amber-500/20", text: "text-amber-400", border: "border-amber-500/30", label: "text-amber-500", labelText: "Amber", hex: "#f59e0b" },
-      { bg: "bg-rose-500/20", text: "text-rose-400", border: "border-rose-500/30", label: "text-rose-500", labelText: "Rose", hex: "#f43f5e" },
-      { bg: "bg-blue-500/20", text: "text-blue-400", border: "border-blue-500/30", label: "text-blue-500", labelText: "Blue", hex: "#3b82f6" },
-      { bg: "bg-emerald-500/20", text: "text-emerald-400", border: "border-emerald-500/30", label: "text-emerald-500", labelText: "Emerald", hex: "#10b981" },
-      { bg: "bg-orange-500/20", text: "text-orange-400", border: "border-orange-500/30", label: "text-orange-500", labelText: "Orange", hex: "#f97316" },
-    ];
-    
-    // Simple hash function
-    let hash = 0;
-    for (let i = 0; i < userId.length; i++) {
-      hash = ((hash << 5) - hash) + userId.charCodeAt(i);
-      hash |= 0;
-    }
-    const index = Math.abs(hash) % colors.length;
-    const color = colors[index];
-
-    return color;
-  }
 
   // ── Handle closing tab (VS Code style: removes from openTabs, retains file in workspace) ──
   const handleCloseTab = (e: React.MouseEvent, path: string) => {
@@ -457,24 +1402,105 @@ function RoomPage() {
     workspaceReadyRef.current = false;
     async function loadRoom() {
       try {
-        const res = await api.get(`/api/rooms/${roomId}`);
-        setRoom(res.data);
+        const [roomRes, historyRes, messagesRes] = await Promise.all([
+          api.get(`/api/rooms/${roomId}`),
+          api.get(`/api/rooms/${roomId}/history`).catch(() => ({ data: [] })),
+          api.get(`/api/rooms/${roomId}/messages`).catch(() => ({ data: [] })),
+        ]);
+
+        setRoom(roomRes.data);
         localStorage.setItem("syncscript_active_roomId", roomId);
 
-        const loaded = filesFromApi(res.data.files);
-        setFiles(loaded);
-        filesRef.current = loaded;
+        if (Array.isArray(messagesRes.data)) {
+          setChatMessages(messagesRes.data.map(formatChatMessage));
+        }
+
+        const apiFiles = filesFromApi(roomRes.data.files);
+
+        // 1. Establish sessionBaseline from latest saved snapshot / session history
+        let baseline: FileSystem = {};
+        const historyList = Array.isArray(historyRes.data) ? historyRes.data : [];
+        if (historyList.length > 0) {
+          const latestSession = historyList[0];
+          if (latestSession.files && Array.isArray(latestSession.files) && latestSession.files.length > 0) {
+            baseline = filesFromApi(latestSession.files);
+          } else if (latestSession.code) {
+            baseline = {
+              "main.js": {
+                path: "main.js",
+                name: "main.js",
+                type: "file",
+                content: latestSession.code,
+              },
+            };
+          } else {
+            baseline = { ...apiFiles };
+          }
+        } else {
+          baseline = { ...apiFiles };
+        }
+        setSessionBaseline(baseline);
+
+        // 2. Restore workspace persistence if present
+        let initialFiles = { ...apiFiles };
+        let initialTabs: string[] = [];
+        let initialActive: string | null = null;
+        let initialCursor: { lineNumber: number; column: number } | null = null;
+
+        try {
+          const savedWsRaw = localStorage.getItem(`syncscript_workspace_${roomId}`);
+          if (savedWsRaw) {
+            const parsedWs = JSON.parse(savedWsRaw);
+            if (parsedWs && typeof parsedWs === "object") {
+              if (parsedWs.files && typeof parsedWs.files === "object" && Object.keys(parsedWs.files).length > 0) {
+                initialFiles = { ...apiFiles, ...parsedWs.files };
+              }
+              if (Array.isArray(parsedWs.expandedFolders)) {
+                for (const folderPath of parsedWs.expandedFolders) {
+                  if (initialFiles[folderPath]) {
+                    initialFiles[folderPath] = { ...initialFiles[folderPath], isOpen: true };
+                  }
+                }
+              }
+              if (Array.isArray(parsedWs.openTabs) && parsedWs.openTabs.length > 0) {
+                const validTabs = parsedWs.openTabs.filter((t: string) => initialFiles[t]);
+                if (validTabs.length > 0) {
+                  initialTabs = validTabs;
+                }
+              }
+              if (parsedWs.activeFile && initialFiles[parsedWs.activeFile]) {
+                initialActive = parsedWs.activeFile;
+              }
+              if (parsedWs.cursorPosition && typeof parsedWs.cursorPosition.lineNumber === "number") {
+                initialCursor = parsedWs.cursorPosition;
+              }
+            }
+          }
+        } catch (_) {}
+
+        if (initialTabs.length === 0) {
+          const firstFile = Object.values(initialFiles).find((n) => n.type === "file")?.path ?? null;
+          initialTabs = firstFile ? [firstFile] : [];
+          if (!initialActive) initialActive = firstFile;
+        } else if (!initialActive) {
+          initialActive = initialTabs[0] || null;
+        }
+
+        setFiles(initialFiles);
+        filesRef.current = initialFiles;
+        setOpenTabs(initialTabs);
+        openTabsRef.current = initialTabs;
+        setActiveFile(initialActive);
+        activeFileRef.current = initialActive;
+        setExplorerSelection(initialActive);
+        savedCursorPosRef.current = initialCursor;
 
         const originals: Record<string, string> = {};
-        for (const node of Object.values(loaded)) {
+        for (const node of Object.values(baseline)) {
           if (node.type === "file") originals[node.path] = node.content ?? "";
         }
         originalContents.current = originals;
-
-        const firstFile = Object.values(loaded).find((n) => n.type === "file")?.path ?? null;
-        setActiveFile(firstFile);
-        setOpenTabs(firstFile ? [firstFile] : []);
-        setExplorerSelection(firstFile);
+        setLastSeenFiles(originals);
         workspaceReadyRef.current = true;
       } catch (err) {
         console.error("Failed to fetch room details", err);
@@ -485,25 +1511,39 @@ function RoomPage() {
     loadRoom();
   }, [roomId]);
 
-  const persistFiles = useCallback(
-    (nextFiles: FileSystem, immediate = false) => {
+  // ── Auto-save flush on window beforeunload & unmount ─────────────────────
+  useEffect(() => {
+    const flushSave = () => {
       if (!workspaceReadyRef.current) return;
-      if (persistTimerRef.current) {
-        clearTimeout(persistTimerRef.current);
-        persistTimerRef.current = null;
+      const currentActive = activeFileRef.current;
+      const currentFiles = { ...filesRef.current };
+      if (currentActive && editorRef.current) {
+        const val = editorRef.current.getValue();
+        if (currentFiles[currentActive]) {
+          currentFiles[currentActive] = { ...currentFiles[currentActive], content: val };
+        }
       }
-      const write = () => {
-        api.put(`/api/rooms/${roomId}/files`, { files: serializeFiles(nextFiles) }).catch((err) => {
-          console.error("Failed to persist room files", err);
-        });
-      };
-      if (immediate) write();
-      else {
-        persistTimerRef.current = setTimeout(write, 400);
-      }
-    },
-    [roomId],
-  );
+      try {
+        const token = localStorage.getItem("token") || "";
+        const payload = JSON.stringify({ files: serializeFiles(currentFiles) });
+        fetch(`/api/rooms/${roomId}/files`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: payload,
+          keepalive: true,
+        }).catch(() => {});
+      } catch (_) {}
+    };
+
+    window.addEventListener("beforeunload", flushSave);
+    return () => {
+      window.removeEventListener("beforeunload", flushSave);
+      flushSave();
+    };
+  }, [roomId]);
 
   // ── Monaco model management helpers ──────────────────────────────────
   // (declared before applyRemoteFileChange / editor effects use them)
@@ -547,6 +1587,14 @@ function RoomPage() {
       const model = getOrCreateMonacoModel(monacoInst, targetFile, content, language);
       if (editor.getModel() !== model) {
         editor.setModel(model);
+      }
+
+      if (savedCursorPosRef.current) {
+        try {
+          const validated = model.validatePosition(savedCursorPosRef.current);
+          editor.setPosition(validated);
+          editor.revealPositionInCenter(validated);
+        } catch (_) {}
       }
     },
     [getOrCreateMonacoModel]
@@ -765,6 +1813,7 @@ function RoomPage() {
     emitFolderRenamed,
     emitFolderDeleted,
     emitCursorMove,
+    emitSendMessage,
     onlineCount 
   } = useRoomSocket({
     roomId,
@@ -781,10 +1830,19 @@ function RoomPage() {
     onUserLeft: handleUserLeft,
     onOnlineUsers: handleOnlineUsers,
     onCursorUpdate: handleCursorUpdate,
+    onChatMessage: handleIncomingChatMessage,
     onError: (message) => {
       console.error("Room socket error:", message);
     },
   });
+
+  const handleSendMessage = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = chatInput.trim();
+    if (!trimmed) return;
+    emitSendMessage(trimmed);
+    setChatInput("");
+  };
 
   // ── Explorer Actions ─────────────────────────────────────────────────────
 
@@ -1019,8 +2077,7 @@ function RoomPage() {
   const handleNodeClick = (path: string) => {
     setExplorerSelection(path);
     if (files[path]?.type === "file") {
-      setActiveFile(path);
-      setOpenTabs((prev) => (prev.includes(path) ? prev : [...prev, path]));
+      handleSelectFile(path);
     } else if (files[path]?.type === "folder") {
       toggleFolder(path);
     }
@@ -1039,10 +2096,15 @@ function RoomPage() {
 
       // Read content directly from the editor's model instead of relying on the value parameter
       const newContent = editorRef.current?.getValue() ?? "";
-      setFiles((prev) => ({
-        ...prev,
-        [activeFile]: { ...prev[activeFile], content: newContent },
-      }));
+      setFiles((prev) => {
+        const next = {
+          ...prev,
+          [activeFile]: { ...prev[activeFile], content: newContent },
+        };
+        filesRef.current = next;
+        persistFiles(next, false); // Debounced auto-save on typing
+        return next;
+      });
       // Track modified state
       const isModified = newContent !== (originalContents.current[activeFile] ?? "");
       setModifiedFiles((prev) => {
@@ -1056,7 +2118,7 @@ function RoomPage() {
         emitFileChange(activeFile, newContent);
       }
     },
-    [activeFile, emitFileChange],
+    [activeFile, emitFileChange, persistFiles],
   );
 
   // ── Monaco mount handler ─────────────────────────────────────────────────
@@ -1074,6 +2136,11 @@ function RoomPage() {
 
       editorInstance.focus();
 
+      // Register Save File shortcut in Monaco (Cmd+S / Ctrl+S)
+      editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+        handleSaveFileRef.current?.();
+      });
+
       // Register Run Code shortcut in Monaco
       editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
         handleRunCodeRef.current?.();
@@ -1090,18 +2157,19 @@ function RoomPage() {
 
       // Track cursor position changes — skip during remote updates to preserve isolation
       cursorChangeListenerRef.current = editorInstance.onDidChangeCursorPosition((e) => {
-        // console.log(`CURSOR_POSITION_CHANGED line=${e.position?.lineNumber} col=${e.position?.column} isRemote=${isRemoteUpdate.current} reason=${Number(e.reason)}`);
         if (isRemoteUpdate.current) return;
         const position = e.position;
         if (position) {
           localCursorLineRef.current = position.lineNumber;
+          savedCursorPosRef.current = { lineNumber: position.lineNumber, column: position.column };
+          saveWorkspaceState({ cursorPosition: { lineNumber: position.lineNumber, column: position.column } });
           if (activeFileRef.current) {
             emitCursorMove(activeFileRef.current, { lineNumber: position.lineNumber, column: position.column });
           }
         }
       });
     },
-    [emitCursorMove, attachModelToEditor]
+    [emitCursorMove, attachModelToEditor, saveWorkspaceState]
   );
 
   // Sanitize userId for use as CSS class names (MongoDB IDs and JWT IDs may contain unsafe chars)
@@ -1319,7 +2387,17 @@ function RoomPage() {
         code: codeText,
         language: getLanguageFromExtension(activeFile),
         label: snapshotName.trim() || undefined,
+        files: serializeFiles(files),
       });
+      setSessionBaseline({ ...files });
+      const snapshot: Record<string, string> = {};
+      for (const [p, n] of Object.entries(files)) {
+        if (n.type === "file") snapshot[p] = n.content ?? "";
+      }
+      setLastSeenFiles(snapshot);
+      originalContents.current = snapshot;
+      setModifiedFiles(new Set());
+      saveWorkspaceState({ files });
       setSaveModalOpen(false);
       setSnapshotName("");
     } catch (err: any) {
@@ -1431,7 +2509,7 @@ function RoomPage() {
               title="Save Snapshot"
             >
               <span className="material-symbols-outlined text-[16px] text-emerald-400">save</span>
-              <span className="hidden sm:inline">Save</span>
+              <span className="hidden sm:inline">Save Snapshot</span>
             </button>
 
             <div className="relative">
@@ -1491,13 +2569,17 @@ function RoomPage() {
               <span className="hidden md:inline">Chat</span>
             </button>
 
-            <Link
-              to="/rooms"
-              className="px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-[#c2c6d6] hover:bg-white/10 transition-colors"
-              title="Back to Rooms"
+            <button
+              onClick={() => {
+                localStorage.removeItem("syncscript_active_roomId");
+                navigate({ to: "/rooms" });
+              }}
+              className="px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-[#c2c6d6] hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/30 transition-colors flex items-center gap-1"
+              title="Leave Room & Return to My Rooms"
             >
-              ←
-            </Link>
+              <span className="material-symbols-outlined text-[14px]">logout</span>
+              <span className="hidden md:inline">Exit Room</span>
+            </button>
           </div>
         </header>
 
@@ -1505,13 +2587,13 @@ function RoomPage() {
         <main className="flex flex-1 min-h-0 overflow-hidden">
 
           {/* ── Left Sidebar: Activity Bar + File Explorer ───────────────── */}
-          <aside className="flex w-[260px] flex-shrink-0 bg-sidebar-bg border-r border-white/5">
+          <aside className="flex w-[280px] flex-shrink-0 bg-sidebar-bg border-r border-white/5">
 
             {/* Activity Bar (slim icon strip) */}
             <div className="w-12 flex flex-col items-center py-4 gap-4 border-r border-white/5 bg-[#0e1117]">
               <button 
                 onClick={() => setActiveSidebarTab("explorer")}
-                title="Explorer"
+                title="Explorer (Ctrl+Shift+E)"
                 className={`w-full flex justify-center py-2.5 transition-all relative ${
                   activeSidebarTab === "explorer" 
                     ? "text-[#3B82F6] border-l-2 border-[#3B82F6] bg-white/5" 
@@ -1521,8 +2603,14 @@ function RoomPage() {
                 <span className="material-symbols-outlined text-[20px]">description</span>
               </button>
               <button 
-                onClick={() => setActiveSidebarTab("search")}
-                title="Search"
+                onClick={() => {
+                  setActiveSidebarTab("search");
+                  setTimeout(() => {
+                    searchInputRef.current?.focus();
+                    searchInputRef.current?.select();
+                  }, 50);
+                }}
+                title="Search (Ctrl+Shift+F)"
                 className={`w-full flex justify-center py-2.5 transition-all relative ${
                   activeSidebarTab === "search" 
                     ? "text-[#3B82F6] border-l-2 border-[#3B82F6] bg-white/5" 
@@ -1533,7 +2621,7 @@ function RoomPage() {
               </button>
               <button 
                 onClick={() => setActiveSidebarTab("sourceControl")}
-                title="Source Control"
+                title="Source Control (Ctrl+Shift+G)"
                 className={`w-full flex justify-center py-2.5 transition-all relative ${
                   activeSidebarTab === "sourceControl" 
                     ? "text-[#3B82F6] border-l-2 border-[#3B82F6] bg-white/5" 
@@ -1541,10 +2629,15 @@ function RoomPage() {
                 }`}
               >
                 <span className="material-symbols-outlined text-[20px]">account_tree</span>
+                {unseenChangesCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 min-w-[14px] h-[14px] px-1 rounded-full bg-[#3B82F6] text-white text-[9px] font-bold flex items-center justify-center animate-in fade-in">
+                    {unseenChangesCount}
+                  </span>
+                )}
               </button>
               <button 
                 onClick={() => setActiveSidebarTab("extensions")}
-                title="Extensions"
+                title="Extensions (Ctrl+Shift+X)"
                 className={`w-full flex justify-center py-2.5 transition-all relative ${
                   activeSidebarTab === "extensions" 
                     ? "text-[#3B82F6] border-l-2 border-[#3B82F6] bg-white/5" 
@@ -1570,6 +2663,7 @@ function RoomPage() {
 
             {/* Active Sidebar Tab Panels */}
             <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Explorer Panel */}
               {activeSidebarTab === "explorer" && (
                 <>
                   <div className="px-4 py-3 flex justify-between items-center border-b border-white/5">
@@ -1593,11 +2687,35 @@ function RoomPage() {
                     </div>
                   </div>
 
+                  {/* Feature 2: Explorer File Search Filter Box */}
+                  <div className="px-3 py-2 border-b border-white/5 bg-[#0e1117]/60">
+                    <div className="relative">
+                      <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-outline text-[14px]">search</span>
+                      <input
+                        type="text"
+                        placeholder="Filter files in workspace..."
+                        value={explorerSearchQuery}
+                        onChange={(e) => setExplorerSearchQuery(e.target.value)}
+                        className="w-full bg-[#0B0E14] border border-white/10 rounded-md pl-7 pr-7 py-1 text-xs text-white placeholder-[#8c909f] focus:outline-none focus:border-[#3B82F6] transition-all font-mono"
+                      />
+                      {explorerSearchQuery && (
+                        <button
+                          onClick={() => setExplorerSearchQuery("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-outline hover:text-white text-[12px]"
+                          title="Clear filter"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {/* File list */}
                     <div className="mb-4">
                       {visiblePaths.map((path) => {
                         const node = files[path];
+                        if (!node) return null;
                         const isActiveFile = activeFile === path;
                         const isSelected = explorerSelection === path;
                         const isModified = modifiedFiles.has(path);
@@ -1620,7 +2738,9 @@ function RoomPage() {
                               <span className="material-symbols-outlined text-[16px] text-yellow-600">
                                 {node.isOpen ? "folder_open" : "folder"}
                               </span>
-                              <span className="text-body-sm font-medium flex-1">{node.name}</span>
+                              <span className="text-body-sm font-medium flex-1 truncate">
+                                <HighlightText text={node.name} query={explorerSearchQuery} />
+                              </span>
                             </button>
                           );
                         }
@@ -1649,7 +2769,9 @@ function RoomPage() {
                             >
                               {fileIcon.icon}
                             </span>
-                            <span className="text-body-sm flex-1">{node.name}</span>
+                            <span className="text-body-sm flex-1 truncate">
+                              <HighlightText text={node.name} query={explorerSearchQuery} />
+                            </span>
                             {isModified && (
                               <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" title="Modified" />
                             )}
@@ -1657,8 +2779,8 @@ function RoomPage() {
                         );
                       })}
                       {visiblePaths.length === 0 && (
-                        <div className="px-4 py-3 text-outline-variant text-sm text-center">
-                          Workspace is empty
+                        <div className="px-4 py-6 text-outline-variant text-xs text-center italic">
+                          {explorerSearchQuery ? `No files matching "${explorerSearchQuery}"` : "Workspace is empty"}
                         </div>
                       )}
                     </div>
@@ -1699,166 +2821,517 @@ function RoomPage() {
                 </>
               )}
 
-              {/* Search Panel */}
+              {/* Feature 1: Workspace Search Panel */}
               {activeSidebarTab === "search" && (
-                <div className="flex-1 flex flex-col overflow-hidden p-4">
-                  <div className="text-label-caps text-outline uppercase font-semibold mb-3">Search</div>
-                  <div className="relative mb-4">
-                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span>
+                <div className="flex-1 flex flex-col overflow-hidden p-3">
+                  <div className="text-label-caps text-outline uppercase font-semibold mb-2">Search</div>
+                  
+                  {/* Search Input Box + Filter Controls */}
+                  <div className="relative mb-2">
+                    <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-outline text-[16px]">search</span>
                     <input
+                      ref={searchInputRef}
                       type="text"
-                      placeholder="Search files and content..."
+                      placeholder="Search files & code..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full bg-[#0B0E14] border border-white/10 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-[#8c909f] focus:outline-none focus:border-[#3B82F6] transition-all"
+                      className="w-full bg-[#0B0E14] border border-white/10 rounded-lg pl-8 pr-20 py-2 text-xs text-white placeholder-[#8c909f] focus:outline-none focus:border-[#3B82F6] transition-all font-mono"
                     />
+                    
+                    {/* Toggle Buttons (Match Case, Whole Word, Regex) */}
+                    <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+                      <button
+                        onClick={() => setSearchCaseSensitive((v) => !v)}
+                        title="Match Case (Alt+C)"
+                        className={`px-1 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
+                          searchCaseSensitive ? "bg-[#3B82F6] text-white" : "text-[#8c909f] hover:bg-white/10 hover:text-white"
+                        }`}
+                      >
+                        Aa
+                      </button>
+                      <button
+                        onClick={() => setSearchWholeWord((v) => !v)}
+                        title="Match Whole Word (Alt+W)"
+                        className={`px-1 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
+                          searchWholeWord ? "bg-[#3B82F6] text-white" : "text-[#8c909f] hover:bg-white/10 hover:text-white"
+                        }`}
+                      >
+                        \b
+                      </button>
+                      <button
+                        onClick={() => setSearchRegex((v) => !v)}
+                        title="Use Regular Expression (Alt+R)"
+                        className={`px-1 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
+                          searchRegex ? "bg-[#3B82F6] text-white" : "text-[#8c909f] hover:bg-white/10 hover:text-white"
+                        }`}
+                      >
+                        .*
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3">
+                  {/* Search Results Summary */}
+                  {searchQuery.trim() !== "" && (
+                    <div className="text-[11px] text-[#8c909f] mb-2 px-1 flex items-center justify-between">
+                      <span>
+                        {totalSearchMatches} {totalSearchMatches === 1 ? "result" : "results"} in {searchResults.length} {searchResults.length === 1 ? "file" : "files"}
+                      </span>
+                      {searchResults.length > 0 && (
+                        <button
+                          onClick={() => {
+                            const allExpanded = searchResults.every((r) => searchExpandedFiles[r.path] !== false);
+                            const nextState: Record<string, boolean> = {};
+                            searchResults.forEach((r) => {
+                              nextState[r.path] = !allExpanded;
+                            });
+                            setSearchExpandedFiles(nextState);
+                          }}
+                          className="text-[10px] text-[#3B82F6] hover:underline"
+                        >
+                          {searchResults.every((r) => searchExpandedFiles[r.path] !== false) ? "Collapse All" : "Expand All"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Search Results List */}
+                  <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
                     {searchQuery.trim() !== "" ? (
-                      (() => {
-                        const q = searchQuery.toLowerCase();
-                        const matchingFiles = Object.values(files).filter(
-                          (f) => f.type === "file" && (f.name.toLowerCase().includes(q) || (f.content && f.content.toLowerCase().includes(q)))
-                        );
+                      searchResults.length > 0 ? (
+                        searchResults.map((result) => {
+                          const icon = getFileIcon(result.name);
+                          const isExpanded = searchExpandedFiles[result.path] !== false;
+                          const totalItemMatches = result.matches.length + (result.fileNameMatch ? 1 : 0);
 
-                        if (matchingFiles.length === 0) {
-                          return <div className="text-xs text-[#8c909f] text-center italic mt-4">No matching files or content found</div>;
-                        }
-
-                        return matchingFiles.map((file) => {
-                          const icon = getFileIcon(file.name);
-                          const isContentMatch = file.content && file.content.toLowerCase().includes(q);
                           return (
-                            <div
-                              key={file.path}
-                              onClick={() => handleNodeClick(file.path)}
-                              className="p-2 rounded-lg bg-[#181c24] hover:bg-[#202632] border border-white/5 cursor-pointer transition-all"
-                            >
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className={`material-symbols-outlined text-[16px] ${icon.color}`}>{icon.icon}</span>
-                                <span className="text-xs font-semibold text-white">{file.name}</span>
+                            <div key={result.path} className="rounded-lg bg-[#141820] border border-white/5 overflow-hidden">
+                              {/* File Header */}
+                              <div
+                                onClick={() => {
+                                  setSearchExpandedFiles((prev) => ({
+                                    ...prev,
+                                    [result.path]: !isExpanded,
+                                  }));
+                                }}
+                                className="flex items-center justify-between p-2 hover:bg-[#1c222d] cursor-pointer transition-colors select-none"
+                              >
+                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                  <span className="material-symbols-outlined text-[14px] text-[#8c909f]">
+                                    {isExpanded ? "expand_more" : "chevron_right"}
+                                  </span>
+                                  <span className={`material-symbols-outlined text-[16px] ${icon.color}`}>
+                                    {icon.icon}
+                                  </span>
+                                  <span className="text-xs font-semibold text-white truncate">{result.name}</span>
+                                </div>
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-[#3B82F6]/20 text-[#adc6ff] shrink-0">
+                                  {totalItemMatches}
+                                </span>
                               </div>
-                              {isContentMatch && (
-                                <p className="text-[11px] text-[#8c909f] font-mono line-clamp-2 bg-[#0d1117] p-1.5 rounded mt-1">
-                                  {file.content}
-                                </p>
+
+                              {/* Matching Lines */}
+                              {isExpanded && (
+                                <div className="border-t border-white/5 bg-[#0d1017]/80 divide-y divide-white/5">
+                                  {result.matches.map((m, idx) => (
+                                    <div
+                                      key={`${result.path}-${m.lineNumber}-${idx}`}
+                                      onClick={() => jumpToLocation(result.path, m.lineNumber, m.matchStart + 1)}
+                                      className="flex items-start gap-2 px-3 py-1.5 hover:bg-[#3B82F6]/10 cursor-pointer transition-colors group"
+                                    >
+                                      <span className="text-[10px] font-mono text-[#8c909f] group-hover:text-[#adc6ff] shrink-0 pt-0.5 w-6 text-right">
+                                        {m.lineNumber}:
+                                      </span>
+                                      <p className="text-[11px] font-mono text-[#c2c6d6] truncate flex-1">
+                                        <HighlightText text={m.lineContent} query={searchQuery} />
+                                      </p>
+                                    </div>
+                                  ))}
+                                  {result.matches.length === 0 && result.fileNameMatch && (
+                                    <div
+                                      onClick={() => jumpToLocation(result.path, 1, 1)}
+                                      className="px-3 py-1.5 text-[11px] text-[#8c909f] hover:bg-[#3B82F6]/10 cursor-pointer italic"
+                                    >
+                                      File name matched
+                                    </div>
+                                  )}
+                                </div>
                               )}
                             </div>
                           );
-                        });
-                      })()
+                        })
+                      ) : (
+                        <div className="text-xs text-[#8c909f] text-center italic mt-6">
+                          No matching files or code lines found
+                        </div>
+                      )
                     ) : (
-                      <div className="text-xs text-[#8c909f] text-center italic mt-4">Type to search workspace files and code...</div>
+                      <div className="text-xs text-[#8c909f] text-center italic mt-6">
+                        Type keyword to search workspace files and code...
+                      </div>
                     )}
                   </div>
                 </div>
               )}
 
-              {/* Source Control Panel */}
+              {/* Feature 3: Source Control Panel */}
               {activeSidebarTab === "sourceControl" && (
-                <div className="flex-1 flex flex-col overflow-hidden p-4">
-                  <div className="flex justify-between items-center mb-4">
+                <div className="flex-1 flex flex-col overflow-hidden p-3">
+                  <div className="flex justify-between items-center mb-3">
                     <span className="text-label-caps text-outline uppercase font-semibold">Source Control</span>
                     <span className="text-xs font-mono font-bold bg-[#3B82F6]/20 text-[#3B82F6] px-2 py-0.5 rounded">
-                      {modifiedFiles.size} Changes
+                      {sourceControlChanges.total} Changes
                     </span>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto custom-scrollbar">
-                    {modifiedFiles.size > 0 ? (
-                      <div className="space-y-2">
-                        <div className="text-xs uppercase font-mono tracking-wider text-[#8c909f] mb-2">Staged Changes</div>
-                        {Array.from(modifiedFiles).map((path) => {
+                  {/* Actions Header Bar */}
+                  <div className="flex items-center gap-2 mb-3 pb-2 border-b border-white/5">
+                    <button
+                      onClick={handleSave}
+                      className="flex-1 py-1 px-2 rounded-lg bg-[#3B82F6] hover:bg-[#2563eb] text-white text-xs font-bold flex items-center justify-center gap-1 transition-all shadow-sm shadow-[#3B82F6]/20"
+                      title="Commit changes as snapshot"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">save</span>
+                      <span>Save Snapshot</span>
+                    </button>
+                    {sourceControlChanges.total > 0 && (
+                      <button
+                        onClick={discardAllChanges}
+                        className="py-1 px-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 text-xs font-semibold flex items-center gap-1 transition-all"
+                        title="Discard All Workspace Changes"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">undo</span>
+                        <span>Discard All</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3">
+                    {sourceControlChanges.total > 0 ? (
+                      <div className="space-y-1.5">
+                        <div className="text-[10px] uppercase font-mono tracking-wider text-[#8c909f] mb-1 px-1">
+                          Changed Files ({sourceControlChanges.total})
+                        </div>
+
+                        {/* Modified files */}
+                        {sourceControlChanges.modified.map((path) => {
                           const icon = getFileIcon(files[path]?.name || "");
+                          const isExpanded = expandedDiffs[path] ?? true;
+                          const oldContent = sessionBaseline[path]?.content || "";
+                          const newContent = files[path]?.content || "";
+                          const diff = computeLineDiff(oldContent, newContent);
+
                           return (
                             <div
                               key={path}
-                              onClick={() => handleNodeClick(path)}
-                              className="flex items-center justify-between p-2 rounded-lg bg-[#181c24] hover:bg-[#202632] border border-white/5 cursor-pointer transition-all"
+                              className="rounded-lg bg-[#141820] border border-white/5 overflow-hidden group transition-all"
                             >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className={`material-symbols-outlined text-[16px] ${icon.color}`}>{icon.icon}</span>
-                                <span className="text-xs text-white truncate">{files[path]?.name || path}</span>
+                              <div className="flex items-center justify-between p-2 hover:bg-[#1c222d] transition-colors">
+                                <div
+                                  onClick={() => {
+                                    handleNodeClick(path);
+                                    setExpandedDiffs((prev) => ({ ...prev, [path]: !(prev[path] ?? true) }));
+                                  }}
+                                  className="flex items-center gap-1.5 min-w-0 flex-1 cursor-pointer select-none"
+                                >
+                                  <span className="material-symbols-outlined text-[14px] text-[#8c909f]">
+                                    {isExpanded ? "expand_more" : "chevron_right"}
+                                  </span>
+                                  <span className={`material-symbols-outlined text-[16px] ${icon.color}`}>{icon.icon}</span>
+                                  <span className="text-xs text-white truncate font-mono">{files[path]?.name || path}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => discardSingleChange(path, "modified")}
+                                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded text-[#8c909f] hover:text-white transition-all"
+                                    title="Discard Changes"
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">undo</span>
+                                  </button>
+                                  <span className="text-[10px] font-bold font-mono text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">
+                                    M
+                                  </span>
+                                </div>
                               </div>
-                              <span className="text-[10px] font-bold font-mono text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">M</span>
+
+                              {/* Diff Viewer for Modified File */}
+                              {isExpanded && (
+                                <div className="border-t border-white/5 bg-[#0d1017] p-2 space-y-2 text-[11px] font-mono overflow-x-auto select-text max-h-56 custom-scrollbar">
+                                  {diff.hunks.length > 0 ? (
+                                    diff.hunks.map((hunk, hIdx) => (
+                                      <div key={hIdx} className="space-y-0.5 rounded overflow-hidden border border-white/5 bg-[#141820]/50">
+                                        <div className="bg-white/5 text-[#8c909f] px-2 py-0.5 text-[10px] font-bold flex justify-between">
+                                          <span>Line {hunk.newStart || hunk.oldStart}:</span>
+                                          <span className="text-[9px] text-[#8c909f]/70">hunk #{hIdx + 1}</span>
+                                        </div>
+                                        {hunk.lines.map((dl, lIdx) => (
+                                          <div
+                                            key={lIdx}
+                                            className={`px-2 py-0.5 flex gap-2 leading-relaxed ${
+                                              dl.type === "added"
+                                                ? "bg-emerald-500/15 text-emerald-300 font-medium"
+                                                : dl.type === "deleted"
+                                                ? "bg-rose-500/15 text-rose-300 font-medium"
+                                                : "text-[#8c909f] opacity-70"
+                                            }`}
+                                          >
+                                            <span className="select-none opacity-60 w-3 text-center">
+                                              {dl.type === "added" ? "+" : dl.type === "deleted" ? "-" : " "}
+                                            </span>
+                                            <span className="whitespace-pre overflow-x-auto flex-1">{dl.content || " "}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div className="text-[10px] text-[#8c909f] italic px-1">Whitespace / encoding differences</div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        {/* Added files */}
+                        {sourceControlChanges.added.map((path) => {
+                          const icon = getFileIcon(files[path]?.name || "");
+                          const isExpanded = expandedDiffs[path] ?? false;
+                          const content = files[path]?.content || "";
+                          const lines = content.split("\n");
+
+                          return (
+                            <div
+                              key={path}
+                              className="rounded-lg bg-[#141820] border border-white/5 overflow-hidden group transition-all"
+                            >
+                              <div className="flex items-center justify-between p-2 hover:bg-[#1c222d] transition-colors">
+                                <div
+                                  onClick={() => {
+                                    handleNodeClick(path);
+                                    setExpandedDiffs((prev) => ({ ...prev, [path]: !(prev[path] ?? false) }));
+                                  }}
+                                  className="flex items-center gap-1.5 min-w-0 flex-1 cursor-pointer select-none"
+                                >
+                                  <span className="material-symbols-outlined text-[14px] text-[#8c909f]">
+                                    {isExpanded ? "expand_more" : "chevron_right"}
+                                  </span>
+                                  <span className={`material-symbols-outlined text-[16px] ${icon.color}`}>{icon.icon}</span>
+                                  <span className="text-xs text-white truncate font-mono">{files[path]?.name || path}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => discardSingleChange(path, "added")}
+                                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded text-[#8c909f] hover:text-white transition-all"
+                                    title="Delete Added File"
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">undo</span>
+                                  </button>
+                                  <span className="text-[10px] font-bold font-mono text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-1.5 py-0.5 rounded">
+                                    A
+                                  </span>
+                                </div>
+                              </div>
+
+                              {isExpanded && (
+                                <div className="border-t border-white/5 bg-[#0d1017] p-2 space-y-0.5 text-[11px] font-mono overflow-x-auto select-text max-h-48 custom-scrollbar">
+                                  <div className="bg-white/5 text-[#8c909f] px-2 py-0.5 text-[10px] font-bold">New File Preview</div>
+                                  {lines.slice(0, 30).map((l, lIdx) => (
+                                    <div key={lIdx} className="px-2 py-0.5 flex gap-2 leading-relaxed bg-emerald-500/15 text-emerald-300 font-medium">
+                                      <span className="select-none opacity-60 w-3 text-center">+</span>
+                                      <span className="whitespace-pre overflow-x-auto flex-1">{l || " "}</span>
+                                    </div>
+                                  ))}
+                                  {lines.length > 30 && (
+                                    <div className="text-[10px] text-[#8c909f] italic px-2 py-1">... +{lines.length - 30} more lines</div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        {/* Deleted files */}
+                        {sourceControlChanges.deleted.map((path) => {
+                          const name = path.split("/").pop() || path;
+                          const icon = getFileIcon(name);
+                          const isExpanded = expandedDiffs[path] ?? false;
+                          const oldContent = sessionBaseline[path]?.content || "";
+                          const lines = oldContent.split("\n");
+
+                          return (
+                            <div
+                              key={path}
+                              className="rounded-lg bg-[#141820]/60 border border-white/5 overflow-hidden group transition-all opacity-80"
+                            >
+                              <div className="flex items-center justify-between p-2 hover:bg-[#1c222d] transition-colors">
+                                <div
+                                  onClick={() => setExpandedDiffs((prev) => ({ ...prev, [path]: !(prev[path] ?? false) }))}
+                                  className="flex items-center gap-1.5 min-w-0 flex-1 cursor-pointer select-none line-through text-[#8c909f]"
+                                >
+                                  <span className="material-symbols-outlined text-[14px] text-[#8c909f]">
+                                    {isExpanded ? "expand_more" : "chevron_right"}
+                                  </span>
+                                  <span className={`material-symbols-outlined text-[16px] ${icon.color}`}>{icon.icon}</span>
+                                  <span className="text-xs truncate font-mono">{name}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => discardSingleChange(path, "deleted")}
+                                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded text-[#8c909f] hover:text-white transition-all"
+                                    title="Restore Deleted File"
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">undo</span>
+                                  </button>
+                                  <span className="text-[10px] font-bold font-mono text-rose-400 bg-rose-400/10 border border-rose-400/20 px-1.5 py-0.5 rounded">
+                                    D
+                                  </span>
+                                </div>
+                              </div>
+
+                              {isExpanded && (
+                                <div className="border-t border-white/5 bg-[#0d1017] p-2 space-y-0.5 text-[11px] font-mono overflow-x-auto select-text max-h-48 custom-scrollbar">
+                                  <div className="bg-white/5 text-[#8c909f] px-2 py-0.5 text-[10px] font-bold">Deleted File Content</div>
+                                  {lines.slice(0, 30).map((l, lIdx) => (
+                                    <div key={lIdx} className="px-2 py-0.5 flex gap-2 leading-relaxed bg-rose-500/15 text-rose-300 font-medium">
+                                      <span className="select-none opacity-60 w-3 text-center">-</span>
+                                      <span className="whitespace-pre overflow-x-auto flex-1">{l || " "}</span>
+                                    </div>
+                                  ))}
+                                  {lines.length > 30 && (
+                                    <div className="text-[10px] text-[#8c909f] italic px-2 py-1">... -{lines.length - 30} more lines</div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
                       </div>
                     ) : (
-                      <div className="text-xs text-[#8c909f] text-center italic mt-8">No uncommitted changes in workspace</div>
+                      <div className="text-xs text-[#8c909f] text-center italic mt-8">
+                        No uncommitted changes in workspace session
+                      </div>
                     )}
                   </div>
                 </div>
               )}
 
-              {/* Extensions Panel */}
+              {/* Feature 4: Extensions Panel */}
               {activeSidebarTab === "extensions" && (
-                <div className="flex-1 flex flex-col overflow-hidden p-4">
-                  <div className="text-label-caps text-outline uppercase font-semibold mb-3">Extensions</div>
-                  <div className="relative mb-4">
-                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span>
+                <div className="flex-1 flex flex-col overflow-hidden p-3">
+                  <div className="text-label-caps text-outline uppercase font-semibold mb-2">Extensions</div>
+                  
+                  {/* Search marketplace */}
+                  <div className="relative mb-2">
+                    <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-outline text-[16px]">search</span>
                     <input
                       type="text"
                       placeholder="Search Extensions in Marketplace..."
                       value={extensionsSearch}
                       onChange={(e) => setExtensionsSearch(e.target.value)}
-                      className="w-full bg-[#0B0E14] border border-white/10 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-[#8c909f] focus:outline-none focus:border-[#3B82F6] transition-all"
+                      className="w-full bg-[#0B0E14] border border-white/10 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-[#8c909f] focus:outline-none focus:border-[#3B82F6] transition-all font-mono"
                     />
                   </div>
 
-                  <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3">
+                  {/* Filter Pills: All / Installed / Enabled */}
+                  <div className="flex gap-1 mb-3 pb-2 border-b border-white/5">
+                    {(["all", "installed", "enabled"] as const).map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setExtensionsActiveCategory(cat)}
+                        className={`px-2 py-1 rounded-md text-[11px] font-semibold capitalize transition-all ${
+                          extensionsActiveCategory === cat
+                            ? "bg-[#3B82F6] text-white"
+                            : "bg-white/5 text-[#8c909f] hover:text-white"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Extension list */}
+                  <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
                     {extensions
-                      .filter((e) => e.name.toLowerCase().includes(extensionsSearch.toLowerCase()) || e.publisher.toLowerCase().includes(extensionsSearch.toLowerCase()))
+                      .filter((e) => {
+                        const matchesSearch =
+                          e.name.toLowerCase().includes(extensionsSearch.toLowerCase()) ||
+                          e.publisher.toLowerCase().includes(extensionsSearch.toLowerCase()) ||
+                          e.desc.toLowerCase().includes(extensionsSearch.toLowerCase());
+                        if (!matchesSearch) return false;
+                        if (extensionsActiveCategory === "installed") return e.installed;
+                        if (extensionsActiveCategory === "enabled") return e.installed && e.enabled;
+                        return true;
+                      })
                       .map((ext) => (
-                        <div key={ext.id} className="p-3 rounded-xl bg-[#181c24] border border-white/5 flex flex-col justify-between">
-                          <div className="flex items-start gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center shrink-0 border border-[#3B82F6]/20">
+                        <div
+                          key={ext.id}
+                          className="p-3 rounded-xl bg-[#141820] border border-white/5 flex flex-col gap-2.5 hover:border-white/10 transition-all overflow-hidden"
+                        >
+                          {/* Header: Icon + Name + Version */}
+                          <div className="flex items-start gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center shrink-0 border border-[#3B82F6]/20 mt-0.5">
                               <span className="material-symbols-outlined text-[18px]">{ext.icon}</span>
                             </div>
                             <div className="min-w-0 flex-1">
-                              <h4 className="text-xs font-bold text-white truncate">{ext.name}</h4>
-                              <p className="text-[10px] text-[#8c909f]">{ext.publisher}</p>
-                              <p className="text-[11px] text-[#c2c6d6] mt-1 line-clamp-2">{ext.desc}</p>
+                              <div className="flex items-baseline justify-between gap-1.5 flex-wrap">
+                                <h4 className="text-xs font-bold text-white leading-snug break-words">{ext.name}</h4>
+                                <span className="text-[9px] font-mono text-[#8c909f] bg-white/5 px-1.5 py-0.5 rounded border border-white/5 shrink-0">
+                                  {ext.version}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span className="text-[10px] text-[#8c909f]">{ext.publisher}</span>
+                                <span className="text-[9px] text-[#3B82F6] font-mono bg-[#3B82F6]/10 px-1.5 py-0.5 rounded border border-[#3B82F6]/20">
+                                  {ext.category}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                          <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-white/5">
+
+                          {/* Description with proper text wrapping */}
+                          <p className="text-[11px] text-[#c2c6d6] leading-relaxed break-words whitespace-normal">
+                            {ext.desc}
+                          </p>
+
+                          {/* Action Toolbar - guaranteed to stay inside card */}
+                          <div className="pt-2 border-t border-white/5 flex items-center gap-2">
                             {ext.installed ? (
-                              <>
+                              <div className="flex items-center gap-2 w-full">
                                 <button
                                   onClick={() =>
-                                    setExtensions((prev) =>
+                                    updateExtensions((prev) =>
                                       prev.map((e) => (e.id === ext.id ? { ...e, enabled: !e.enabled } : e))
                                     )
                                   }
-                                  className={`text-[10px] px-2 py-1 rounded font-bold transition-all ${
-                                    ext.enabled ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
+                                  className={`flex-1 py-1 px-2 rounded-lg text-xs font-bold transition-all text-center border ${
+                                    ext.enabled
+                                      ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25"
+                                      : "bg-gray-500/15 text-gray-400 border-gray-500/30 hover:bg-gray-500/25"
                                   }`}
                                 >
                                   {ext.enabled ? "Enabled" : "Disabled"}
                                 </button>
                                 <button
                                   onClick={() =>
-                                    setExtensions((prev) =>
+                                    updateExtensions((prev) =>
                                       prev.map((e) => (e.id === ext.id ? { ...e, installed: false, enabled: false } : e))
                                     )
                                   }
-                                  className="text-[10px] bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded font-bold hover:bg-red-500/30 transition-all"
+                                  className="flex-1 py-1 px-2 rounded-lg text-xs font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 transition-all text-center"
                                 >
                                   Uninstall
                                 </button>
-                              </>
+                              </div>
                             ) : (
                               <button
                                 onClick={() =>
-                                  setExtensions((prev) =>
+                                  updateExtensions((prev) =>
                                     prev.map((e) => (e.id === ext.id ? { ...e, installed: true, enabled: true } : e))
                                   )
                                 }
-                                className="text-[10px] bg-[#3B82F6] hover:bg-[#2563eb] text-white px-3 py-1 rounded font-bold transition-all shadow-md shadow-[#3B82F6]/20"
+                                className="w-full py-1.5 px-3 rounded-lg text-xs font-bold bg-[#3B82F6] hover:bg-[#2563eb] text-white transition-all shadow-md shadow-[#3B82F6]/20 flex items-center justify-center gap-1.5"
                               >
-                                Install
+                                <span className="material-symbols-outlined text-[14px]">download</span>
+                                <span>Install Extension</span>
                               </button>
                             )}
                           </div>
@@ -1894,77 +3367,120 @@ function RoomPage() {
           {/* ── Main Editor Section ────────────────────────────────────────── */}
           <section className="flex-1 flex flex-col min-w-0 bg-editor-bg">
 
-            {/* Tab bar — open tabs */}
-            <div className="flex bg-surface-container-low h-9 border-b border-white/5 overflow-x-auto flex-shrink-0">
-              {openTabs.map((path) => {
-                const file = files[path];
-                if (!file) return null;
-                const isActive = activeFile === path;
-                const tabIcon = getFileIcon(file.name);
-                const isModified = modifiedFiles.has(path);
-                return (
-                  <div
-                    key={path}
-                    onClick={() => handleNodeClick(path)}
-                    className={[
-                      "group flex items-center px-3 gap-2 h-full cursor-pointer transition-colors border-r border-white/5 flex-shrink-0 select-none",
-                      isActive
-                        ? "bg-editor-bg border-t-2 border-primary text-on-surface"
-                        : "hover:bg-surface-container text-outline hover:text-on-surface-variant",
-                    ].join(" ")}
-                  >
-                    <span
+            {/* Tab bar — open tabs + Extensions action toolbar */}
+            <div className="flex items-center justify-between bg-surface-container-low h-9 border-b border-white/5 flex-shrink-0">
+              {/* File tabs */}
+              <div className="flex h-full overflow-x-auto flex-1 custom-scrollbar">
+                {openTabs.map((path) => {
+                  const file = files[path];
+                  if (!file) return null;
+                  const isActive = activeFile === path;
+                  const tabIcon = getFileIcon(file.name);
+                  const isModified = modifiedFiles.has(path);
+                  return (
+                    <div
+                      key={path}
+                      onClick={() => handleNodeClick(path)}
                       className={[
-                        "material-symbols-outlined text-[14px]",
-                        isActive ? tabIcon.color : "text-outline",
+                        "group flex items-center px-3 gap-2 h-full cursor-pointer transition-colors border-r border-white/5 flex-shrink-0 select-none",
+                        isActive
+                          ? "bg-editor-bg border-t-2 border-primary text-on-surface"
+                          : "hover:bg-surface-container text-outline hover:text-on-surface-variant",
                       ].join(" ")}
                     >
-                      {tabIcon.icon}
-                    </span>
-                    <span className="text-body-sm">{file.name}</span>
-                    {isModified && (
-                      <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0 group-hover:hidden" title="Unsaved changes" />
-                    )}
-                    <button
-                      onClick={(e) => handleCloseTab(e, path)}
-                      title="Close Tab"
-                      className={`p-0.5 rounded hover:bg-white/10 text-outline hover:text-white transition-colors ${
-                        isModified ? "group-hover:inline-flex hidden" : "opacity-0 group-hover:opacity-100"
-                      } ${isActive ? "opacity-100" : ""}`}
-                    >
-                      <span className="material-symbols-outlined text-[14px]">close</span>
-                    </button>
+                      <span
+                        className={[
+                          "material-symbols-outlined text-[14px]",
+                          isActive ? tabIcon.color : "text-outline",
+                        ].join(" ")}
+                      >
+                        {tabIcon.icon}
+                      </span>
+                      <span className="text-body-sm">{file.name}</span>
+                      {isModified && (
+                        <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0 group-hover:hidden" title="Unsaved changes" />
+                      )}
+                      <button
+                        onClick={(e) => handleCloseTab(e, path)}
+                        title="Close Tab"
+                        className={`p-0.5 rounded hover:bg-white/10 text-outline hover:text-white transition-colors ${
+                          isModified ? "group-hover:inline-flex hidden" : "opacity-0 group-hover:opacity-100"
+                        } ${isActive ? "opacity-100" : ""}`}
+                      >
+                        <span className="material-symbols-outlined text-[14px]">close</span>
+                      </button>
+                    </div>
+                  );
+                })}
+                {openTabs.length === 0 && (
+                  <div className="flex items-center px-4 text-xs text-[#8c909f] italic">
+                    No tabs open
                   </div>
-                );
-              })}
-              {openTabs.length === 0 && (
-                <div className="flex items-center px-4 text-xs text-[#8c909f] italic">
-                  No tabs open
-                </div>
-              )}
+                )}
+              </div>
+
+              {/* Right Toolbar: Prettier Format Document & Markdown Live Preview Buttons */}
+              <div className="flex items-center gap-1.5 px-2">
+                {/* Format Document with Prettier */}
+                {extensions.some((e) => e.id === "prettier" && e.installed && e.enabled) && (
+                  <button
+                    onClick={handleFormatDocument}
+                    title="Format Document with Prettier (Shift+Alt+F)"
+                    className="flex items-center gap-1 px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-[#adc6ff] hover:text-white text-[11px] font-medium border border-white/5 transition-all"
+                  >
+                    <span className="material-symbols-outlined text-[14px] text-yellow-400">auto_fix_high</span>
+                    <span className="hidden md:inline">Format</span>
+                  </button>
+                )}
+
+                {/* Markdown Live Preview Button */}
+                {activeFile?.endsWith(".md") && extensions.some((e) => e.id === "markdown" && e.installed && e.enabled) && (
+                  <button
+                    onClick={() => setIsPreviewingMarkdown((p) => !p)}
+                    title={isPreviewingMarkdown ? "Switch to Markdown Code Editor" : "Open Live Markdown Preview"}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border transition-all ${
+                      isPreviewingMarkdown
+                        ? "bg-[#3B82F6]/20 border-[#3B82F6]/40 text-white"
+                        : "bg-white/5 border-white/5 text-[#adc6ff] hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[14px] text-cyan-400">
+                      {isPreviewingMarkdown ? "edit_note" : "visibility"}
+                    </span>
+                    <span>{isPreviewingMarkdown ? "Editor" : "Preview"}</span>
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Monaco Editor Container - directly below file tabs, maximizing editor workspace */}
+            {/* Monaco Editor Container / Markdown Live Preview Container */}
             <div className="flex-1 overflow-hidden monaco-editor-wrapper relative" ref={editorContainerRef}>
-              <div className={`w-full h-full ${activeFile ? "block" : "hidden"}`}>
-                <Editor
-                  language={currentLanguage}
-                  onChange={handleEditorChange}
-                  theme="synscript-dark"
-                  options={EDITOR_OPTIONS}
-                  onMount={handleEditorDidMount}
-                  loading={
-                    <div className="flex items-center justify-center h-full bg-[#0d1117] text-[#8c909f] text-sm">
-                      <span className="material-symbols-outlined text-2xl animate-spin mr-2">sync</span>
-                      Loading editor…
-                    </div>
-                  }
-                />
-              </div>
+              {isPreviewingMarkdown && activeFile?.endsWith(".md") ? (
+                <div className="w-full h-full bg-[#0B0E14] overflow-y-auto">
+                  <MarkdownViewer content={currentContent} />
+                </div>
+              ) : (
+                <div className={`w-full h-full ${activeFile ? "block" : "hidden"}`}>
+                  <Editor
+                    language={currentLanguage}
+                    onChange={handleEditorChange}
+                    theme="synscript-dark"
+                    options={EDITOR_OPTIONS}
+                    onMount={handleEditorDidMount}
+                    loading={
+                      <div className="flex items-center justify-center h-full bg-[#0d1117] text-[#8c909f] text-sm">
+                        <span className="material-symbols-outlined text-2xl animate-spin mr-2">sync</span>
+                        Loading editor…
+                      </div>
+                    }
+                  />
+                </div>
+              )}
               {!activeFile && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-outline-variant bg-editor-bg z-10">
                   <span className="material-symbols-outlined text-5xl mb-4 text-white/5">code</span>
                   <p className="text-sm">Select or create a file to edit</p>
+                  <p className="text-xs text-[#8c909f] mt-2">Press <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white font-mono text-[10px]">Ctrl+P</kbd> to Quick Open</p>
                 </div>
               )}
             </div>
@@ -2216,11 +3732,14 @@ function RoomPage() {
 
           {/* ── Right Sidebar: Collapsible Live Chat ────────────────────── */}
           {isChatOpen ? (
-            <aside className="w-72 bg-sidebar-bg border-l border-white/5 flex flex-col shrink-0 transition-all duration-200">
+            <aside className="w-80 bg-sidebar-bg border-l border-white/5 flex flex-col shrink-0 transition-all duration-200">
               <div className="px-4 py-3 flex justify-between items-center border-b border-white/5 bg-[#0e1117]/50">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-[18px] text-[#3B82F6]">forum</span>
-                  <span className="text-label-caps text-outline uppercase font-semibold">Live Chat</span>
+                  <span className="text-label-caps text-outline uppercase font-semibold text-xs tracking-wider">Team Chat</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                    {onlineCount} online
+                  </span>
                 </div>
                 <button
                   onClick={() => setIsChatOpen(false)}
@@ -2233,41 +3752,99 @@ function RoomPage() {
 
               {/* Chat messages */}
               <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-                {chatMessages.map((msg, i) => (
-                  <div key={i} className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-body-sm font-bold ${msg.color}`}>{msg.sender}</span>
-                      <span className="text-[10px] text-outline-variant">{msg.time}</span>
+                {chatMessages.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-4 text-[#8c909f]">
+                    <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-3">
+                      <span className="material-symbols-outlined text-2xl text-[#adc6ff]">chat_bubble</span>
                     </div>
-                    <div className="bg-surface-container-high p-3 rounded-xl rounded-tl-none border border-white/5">
-                      <p className="text-body-sm text-on-surface break-words">{msg.text}</p>
-                    </div>
+                    <p className="text-xs font-semibold text-white">No messages yet</p>
+                    <p className="text-[11px] text-[#8c909f] mt-1 max-w-[180px]">
+                      Send a message to start collaborating with your team!
+                    </p>
                   </div>
-                ))}
+                ) : (
+                  chatMessages.map((msg, i) => {
+                    const isMe =
+                      Boolean(user?._id && msg.senderId && String(user._id) === String(msg.senderId)) ||
+                      Boolean(user?.id && msg.senderId && String(user.id) === String(msg.senderId)) ||
+                      Boolean(user?.username && msg.senderUsername && msg.senderUsername.toLowerCase() === user.username.toLowerCase());
+                    const colorScheme = getUserColor(msg.senderUsername || msg.senderId);
+                    const initial = msg.senderUsername
+                      ? msg.senderUsername.charAt(0).toUpperCase()
+                      : (isMe && user?.username ? user.username.charAt(0).toUpperCase() : "U");
+
+                    return (
+                      <div key={msg._id || i} className="flex gap-2.5 items-start">
+                        {/* Avatar */}
+                        {msg.senderAvatar ? (
+                          <img
+                            src={msg.senderAvatar}
+                            alt={msg.senderUsername}
+                            className="w-7 h-7 rounded-full object-cover shrink-0 border border-white/10 shadow-sm"
+                          />
+                        ) : (
+                          <div
+                            className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold border ${colorScheme.bg} ${colorScheme.text} ${colorScheme.border}`}
+                            title={msg.senderUsername}
+                          >
+                            {initial}
+                          </div>
+                        )}
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0 flex flex-col gap-1">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+                              {msg.senderUsername}
+                              {isMe && (
+                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-primary/20 text-primary font-medium">
+                                  You
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-[10px] text-[#8c909f] shrink-0">{msg.time}</span>
+                          </div>
+
+                          <div
+                            className={`p-2.5 rounded-xl text-xs leading-relaxed break-words ${
+                              isMe
+                                ? "bg-[#1E293B] text-white border border-[#3B82F6]/30 rounded-tl-none"
+                                : "bg-[#161B26] text-[#e1e2eb] border border-white/5 rounded-tl-none"
+                            }`}
+                          >
+                            <p className="whitespace-pre-wrap">{msg.text}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <div ref={chatMessagesEndRef} />
               </div>
 
               {/* Chat input */}
-              <form onSubmit={handleSendMessage} className="p-4 border-t border-white/5 bg-[#0e1117]/30">
-                <div className="relative">
+              <form onSubmit={handleSendMessage} className="p-3 border-t border-white/5 bg-[#0e1117]/50">
+                <div className="flex items-center gap-2 bg-[#0B0E14] border border-white/10 focus-within:border-primary/60 rounded-xl p-1.5 transition-colors">
                   <textarea
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
+                      if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
                         handleSendMessage();
                       }
                     }}
-                    className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg p-3 pr-10 text-body-sm focus:outline-none focus:border-primary transition-colors resize-none custom-scrollbar text-[#e1e2eb]"
+                    className="flex-1 bg-transparent border-none px-2 py-1.5 text-xs text-white placeholder-[#8c909f] focus:outline-none resize-none custom-scrollbar max-h-24"
                     placeholder="Type a message (Enter to send)..."
-                    rows={2}
+                    rows={1}
                   />
                   <button
                     type="submit"
-                    className="absolute right-3 bottom-3 text-primary hover:scale-110 active:scale-95 transition-all"
-                    title="Send Message"
+                    disabled={!chatInput.trim()}
+                    className="w-8 h-8 rounded-lg bg-primary hover:bg-primary/80 disabled:opacity-30 disabled:hover:bg-primary text-white flex items-center justify-center shrink-0 transition-all shadow-md shadow-primary/20 active:scale-95"
+                    title="Send Message (Enter)"
                   >
-                    <span className="material-symbols-outlined">send</span>
+                    <span className="material-symbols-outlined text-[16px]">send</span>
                   </button>
                 </div>
               </form>
@@ -2363,107 +3940,17 @@ function RoomPage() {
           </div>
         )}
 
-        <AICopilot roomId={roomId} />
+        {/* ── Quick Open File Picker Modal (Ctrl+P / Cmd+P) ─────────────── */}
+        <QuickOpenModal
+          isOpen={quickOpenOpen}
+          onClose={() => setQuickOpenOpen(false)}
+          files={Object.values(files)}
+          onSelectFile={(selectedPath) => {
+            handleSelectFile(selectedPath);
+          }}
+          getFileIcon={getFileIcon}
+        />
       </div>
     </AppShell>
   );
-}
-
-// ── AICopilot — unchanged ──────────────────────────────────────────────────
-function AICopilot({ roomId }: { roomId: string }) {
-  const [open, setOpen] = useState(true);
-  const [msgs, setMsgs] = useState<Msg[]>([
-    {
-      role: "ai",
-      text: `Hi! I'm your AI Copilot for ${roomId}. Ask me to explain code, write functions, debug errors, or generate tests.`,
-    },
-  ]);
-  const [input, setInput] = useState("");
-
-  const send = (e: React.FormEvent) => {
-    e.preventDefault();
-    const t = input.trim();
-    if (!t) return;
-    const reply = fakeReply(t);
-    setMsgs((m) => [...m, { role: "user", text: t }, { role: "ai", text: reply }]);
-    setInput("");
-  };
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-[#3B82F6] hover:bg-[#2563eb] text-white shadow-2xl shadow-[#3B82F6]/40 flex items-center justify-center btn-flashlight"
-      >
-        <span className="material-symbols-outlined" style={{ color: "white" }}>
-          smart_toy
-        </span>
-      </button>
-    );
-  }
-
-  return (
-    <div className="fixed bottom-6 right-6 z-50 w-[360px] h-[480px] flex flex-col rounded-2xl bg-[#0F1219] border border-[#3B82F6]/30 shadow-2xl shadow-[#3B82F6]/20 overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-[#3B82F6]/20 to-transparent border-b border-white/5">
-        <div className="w-8 h-8 rounded-lg bg-[#3B82F6] flex items-center justify-center">
-          <span className="material-symbols-outlined text-[18px]" style={{ color: "white" }}>
-            smart_toy
-          </span>
-        </div>
-        <div className="flex-1">
-          <div className="text-sm font-bold">AI Copilot</div>
-          <div className="text-[10px] text-[#8c909f]">Online · GPT-style assistant</div>
-        </div>
-        <button
-          onClick={() => setOpen(false)}
-          className="text-[#8c909f] hover:text-white text-xl leading-none"
-        >
-          ×
-        </button>
-      </div>
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {msgs.map((m, i) => (
-          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div
-              className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${
-                m.role === "user"
-                  ? "bg-[#3B82F6] text-white rounded-br-sm"
-                  : "bg-[#1d2026] text-[#e1e2eb] rounded-bl-sm border border-white/5"
-              }`}
-            >
-              {m.text}
-            </div>
-          </div>
-        ))}
-      </div>
-      <form onSubmit={send} className="p-3 border-t border-white/5 flex gap-2">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask the AI Copilot..."
-          className="flex-1 bg-[#0B0E14] border border-white/10 rounded-lg px-3 py-2 text-sm focus:border-[#3B82F6] outline-none"
-        />
-        <button
-          type="submit"
-          className="px-3 py-2 rounded-lg bg-[#3B82F6] hover:bg-[#2563eb] text-white text-sm font-bold"
-        >
-          Send
-        </button>
-      </form>
-    </div>
-  );
-}
-
-// ── fakeReply — unchanged ──────────────────────────────────────────────────
-function fakeReply(q: string): string {
-  const l = q.toLowerCase();
-  if (l.includes("explain"))
-    return "Sure — this code defines a function. Walk through it line by line: declarations first, then the main logic, then the return value.";
-  if (l.includes("test"))
-    return "Here's a quick test scaffold:\n\n```ts\ntest('works', () => { expect(fn(1)).toBe(2); });\n```";
-  if (l.includes("bug") || l.includes("error"))
-    return "Try logging your inputs first. Most bugs at this layer come from null/undefined or off-by-one indices.";
-  if (l.includes("hello") || l.includes("hi"))
-    return "Hey! Ready when you are — share a snippet or describe what you're building.";
-  return "Got it. Want me to refactor, write a unit test, or generate a function for that?";
 }

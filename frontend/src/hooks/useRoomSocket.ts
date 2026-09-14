@@ -26,6 +26,22 @@ type UseRoomSocketOptions = {
   onOnlineUsers?: (users: { userId: string; username: string }[]) => void;
   /** Cursor events */
   onCursorUpdate?: (payload: { userId: string; filePath: string; position: { lineNumber: number; column: number } }) => void;
+  /** Chat events */
+  onChatMessage?: (payload: {
+    _id?: string;
+    roomId?: string;
+    senderId?: string;
+    userId?: string;
+    sender?: string;
+    senderUsername?: string;
+    username?: string;
+    senderName?: string;
+    senderAvatar?: string;
+    avatar?: string;
+    message?: string;
+    text?: string;
+    createdAt?: string;
+  }) => void;
 };
 
 export function useRoomSocket({
@@ -46,6 +62,7 @@ export function useRoomSocket({
   onUserLeft,
   onOnlineUsers,
   onCursorUpdate,
+  onChatMessage,
 }: UseRoomSocketOptions) {
   const socketRef = useRef<Socket | null>(null);
   const [onlineCount, setOnlineCount] = useState(0);
@@ -64,6 +81,7 @@ export function useRoomSocket({
   const onUserLeftRef = useRef(onUserLeft);
   const onOnlineUsersRef = useRef(onOnlineUsers);
   const onCursorUpdateRef = useRef(onCursorUpdate);
+  const onChatMessageRef = useRef(onChatMessage);
 
   onFileChangeRef.current = onFileChange;
   onUsersChangeRef.current = onUsersChange;
@@ -79,6 +97,7 @@ export function useRoomSocket({
   onUserLeftRef.current = onUserLeft;
   onOnlineUsersRef.current = onOnlineUsers;
   onCursorUpdateRef.current = onCursorUpdate;
+  onChatMessageRef.current = onChatMessage;
 
   /** Emit per-file CODE_CHANGE from local edits only */
   const emitFileChange = useCallback(
@@ -173,6 +192,16 @@ export function useRoomSocket({
     [roomId],
   );
 
+  const emitSendMessage = useCallback(
+    (message: string) => {
+      const socket = socketRef.current;
+      if (!socket?.connected) return;
+      if (!message || !message.trim()) return;
+      socket.emit("send-message", { roomId, message: message.trim() });
+    },
+    [roomId]
+  );
+
   useEffect(() => {
     if (!enabled || !roomId || !username) return;
 
@@ -187,8 +216,8 @@ export function useRoomSocket({
     socketRef.current = socket;
 
     const handleConnect = () => {
-      console.log("JOIN_ROOM", roomId);
-      socket.emit("JOIN_ROOM", roomId);
+      console.log("JOIN_ROOM", { roomId, username });
+      socket.emit("JOIN_ROOM", { roomId, username });
     };
 
     const handleCodeUpdate = ({ filePath, content }: { filePath: string; content: string }) => {
@@ -264,6 +293,11 @@ export function useRoomSocket({
       onCursorUpdateRef.current?.(payload);
     };
 
+    const handleReceiveMessage = (payload: any) => {
+      console.log("🔔 receive-message received", payload);
+      onChatMessageRef.current?.(payload);
+    };
+
     const handleDisconnect = () => {
       console.log("DISCONNECT");
     };
@@ -287,6 +321,7 @@ export function useRoomSocket({
     socket.on("USER_LEFT", handleUserLeft);
     socket.on("ONLINE_USERS", handleOnlineUsers);
     socket.on("CURSOR_UPDATE", handleCursorUpdate);
+    socket.on("receive-message", handleReceiveMessage);
     socket.on("disconnect", handleDisconnect);
     socket.on("error", handleError);
 
@@ -308,6 +343,7 @@ export function useRoomSocket({
       socket.off("USER_LEFT", handleUserLeft);
       socket.off("ONLINE_USERS", handleOnlineUsers);
       socket.off("CURSOR_UPDATE", handleCursorUpdate);
+      socket.off("receive-message", handleReceiveMessage);
       socket.off("disconnect", handleDisconnect);
       socket.off("error", handleError);
       socket.disconnect();
@@ -324,6 +360,7 @@ export function useRoomSocket({
     emitFolderRenamed,
     emitFolderDeleted,
     emitCursorMove,
+    emitSendMessage,
     onlineCount 
   };
 }

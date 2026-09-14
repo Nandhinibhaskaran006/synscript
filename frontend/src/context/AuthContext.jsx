@@ -94,6 +94,7 @@ export function AuthProvider({ children }) {
       window.localStorage.removeItem('token');
       window.localStorage.removeItem('user');
       window.localStorage.removeItem('syncscript_loggedin');
+      window.localStorage.removeItem('syncscript_active_roomId');
     }
     setUser(null);
   };

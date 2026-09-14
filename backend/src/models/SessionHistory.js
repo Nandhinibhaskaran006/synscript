@@ -24,6 +24,10 @@ const sessionHistorySchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    files: {
+      type: Array,
+      default: [],
+    },
   },
   { timestamps: true }
 );
