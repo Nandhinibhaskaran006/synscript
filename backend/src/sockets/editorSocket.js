@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Room = require('../models/Room');
 const ChatMessage = require('../models/ChatMessage');
 const { upsertRoomFileContent } = require('../utils/roomFiles');
+const logger = require('../utils/logger');
 
 // In-memory store: roomId -> Map<socketId, { userId, username }>
 const roomUsers = {};
@@ -110,7 +111,7 @@ const editorSocket = (io) => {
   });
 
   io.on('connection', (socket) => {
-    console.log(`🔌 Socket connected: ${socket.id} (user: ${socket.userId})`);
+    logger.socketConnect(socket.id, socket.userId, socket.username);
 
     // ─── JOIN_ROOM ───────────────────────────────────────────────
     socket.on('JOIN_ROOM', async (payload) => {
@@ -122,7 +123,7 @@ const editorSocket = (io) => {
           socket.username ||
           'Anonymous';
 
-        console.log('JOIN_ROOM', { roomId, username, socketId: socket.id });
+        logger.roomEvent('JOIN_ROOM', roomId, socket.userId, username, { socketId: socket.id });
 
         if (!roomId) {
           socket.emit('error', { message: 'Room ID is required' });
@@ -131,12 +132,12 @@ const editorSocket = (io) => {
 
         const room = await Room.findOne({ roomId });
         if (!room) {
+          logger.warn('ROOM', `Room not found for JOIN_ROOM: ${roomId}`, { userId: socket.userId });
           socket.emit('error', { message: 'Room not found' });
           return;
         }
 
         addSocketToRoom(socket, roomId, username);
-        console.log('🔔 Emitting USER_JOINED', { userId: socket.userId, username, roomId });
         socket.to(roomId).emit('USER_JOINED', { userId: socket.userId, username });
         broadcastOnlineCount(io, roomId);
         // Send current room users to the joining socket so they know who is online
@@ -144,7 +145,7 @@ const editorSocket = (io) => {
         socket.emit('ONLINE_USERS', currentUsers);
         socket.emit('room-joined', { roomId });
       } catch (err) {
-        console.error('JOIN_ROOM error:', err.message);
+        logger.error('ROOM', `JOIN_ROOM error: ${err.message}`, { roomId: parseRoomPayload(payload), stack: err.stack });
         socket.emit('error', { message: 'Failed to join room' });
       }
     });
@@ -286,7 +287,7 @@ const editorSocket = (io) => {
       const roomId = parseRoomPayload(payload) || socket.currentRoom;
       if (!roomId) return;
       await flushRoomPersists(roomId);
-      console.log('🔔 Emitting USER_LEFT', { userId: socket.userId, username: socket.username, roomId });
+      logger.roomEvent('LEAVE_ROOM', roomId, socket.userId, socket.username);
       socket.to(roomId).emit('USER_LEFT', {
         userId: socket.userId,
         username: socket.username,
@@ -334,20 +335,22 @@ const editorSocket = (io) => {
           createdAt: saved.createdAt,
         };
 
+        logger.roomEvent('CHAT_MESSAGE', roomId, senderId, senderUsername, { messageId: saved._id });
+
         // Broadcast to ALL users in room (including sender)
         io.to(roomId).emit('receive-message', payload);
       } catch (err) {
-        console.error('send-message error:', err.message);
+        logger.error('CHAT', `send-message error: ${err.message}`, { roomId, stack: err.stack });
       }
     });
 
     // ─── disconnect ───────────────────────────────────────────────
-    socket.on('disconnect', async () => {
+    socket.on('disconnect', async (reason) => {
       const roomId = socket.currentRoom;
-      console.log('DISCONNECT', { socketId: socket.id, roomId, userId: socket.userId });
+      logger.socketDisconnect(socket.id, socket.userId, reason);
       if (roomId) {
         await flushRoomPersists(roomId);
-        console.log('🔔 Emitting USER_LEFT (disconnect)', { userId: socket.userId, username: socket.username, roomId });
+        logger.roomEvent('USER_LEFT_DISCONNECT', roomId, socket.userId, socket.username);
         socket.to(roomId).emit('USER_LEFT', {
           userId: socket.userId,
           username: socket.username,

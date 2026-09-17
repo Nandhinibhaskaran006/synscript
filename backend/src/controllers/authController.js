@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const logger = require('../utils/logger');
 
 // Generate JWT token
 const generateToken = (id) => {
@@ -14,16 +15,19 @@ const register = async (req, res) => {
     const { username, email, password } = req.body;
 
     if (!username || !email || !password) {
+      logger.authFailure('REGISTER', 'Missing required fields', email || username);
       return res.status(400).json({ message: 'Please provide username, email and password' });
     }
 
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
       const field = existingUser.email === email ? 'Email' : 'Username';
+      logger.authFailure('REGISTER', `${field} already in use`, email || username);
       return res.status(400).json({ message: `${field} already in use` });
     }
 
     const user = await User.create({ username, email, password });
+    logger.authSuccess('REGISTER', user._id, user.username, user.email);
 
     res.status(201).json({
       _id: user._id,
@@ -34,7 +38,7 @@ const register = async (req, res) => {
       token: generateToken(user._id),
     });
   } catch (error) {
-    console.error('Register error:', error.message);
+    logger.error('AUTH', `Register error: ${error.message}`, { stack: error.stack });
     res.status(500).json({ message: 'Server error during registration' });
   }
 };
@@ -47,13 +51,17 @@ const login = async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
+      logger.authFailure('LOGIN', 'Missing credentials', email);
       return res.status(400).json({ message: 'Please provide email and password' });
     }
 
     const user = await User.findOne({ email });
     if (!user || !(await user.matchPassword(password))) {
+      logger.authFailure('LOGIN', 'Invalid credentials', email);
       return res.status(401).json({ message: 'Invalid email or password' });
     }
+
+    logger.authSuccess('LOGIN', user._id, user.username, user.email);
 
     res.json({
       _id: user._id,
@@ -64,7 +72,7 @@ const login = async (req, res) => {
       token: generateToken(user._id),
     });
   } catch (error) {
-    console.error('Login error:', error.message);
+    logger.error('AUTH', `Login error: ${error.message}`, { stack: error.stack });
     res.status(500).json({ message: 'Server error during login' });
   }
 };
