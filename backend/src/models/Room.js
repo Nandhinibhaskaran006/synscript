@@ -53,4 +53,9 @@ const roomSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+roomSchema.index({ owner: 1 });
+roomSchema.index({ members: 1 });
+roomSchema.index({ createdAt: -1 });
+roomSchema.index({ owner: 1, members: 1 });
+
 module.exports = mongoose.model('Room', roomSchema);

@@ -3,14 +3,25 @@ const User = require('../models/User');
 const Room = require('../models/Room');
 const ChatMessage = require('../models/ChatMessage');
 const { upsertRoomFileContent } = require('../utils/roomFiles');
+const terminalWorkspaceService = require('../services/terminalWorkspaceService');
+const workspaceWatcherService = require('../services/workspaceWatcherService');
 const logger = require('../utils/logger');
 
-// In-memory store: roomId -> Map<socketId, { userId, username }>
+// In-memory store: roomId -> Map<userIdStr, { userId, username, avatar, socketIds: Set<socketId> }>
 const roomUsers = {};
 
 function parseRoomPayload(payload) {
   if (typeof payload === 'string') return payload;
   return payload?.roomId;
+}
+
+function getRoomUsers(roomId) {
+  if (!roomUsers[roomId]) return [];
+  return Array.from(roomUsers[roomId].values()).map((u) => ({
+    userId: u.userId,
+    username: u.username,
+    avatar: u.avatar || '',
+  }));
 }
 
 function getRoomUserCount(roomId) {
@@ -54,33 +65,78 @@ async function flushRoomPersists(roomId) {
 }
 
 function broadcastOnlineCount(io, roomId) {
-  const count = getRoomUserCount(roomId);
-  const users = Array.from(roomUsers[roomId]?.values() ?? []);
+  const users = getRoomUsers(roomId);
+  const count = users.length;
   console.log('📡 broadcastOnlineCount', { roomId, count, users });
   io.to(roomId).emit('ONLINE_COUNT', { count });
   io.to(roomId).emit('room-users', users);
+  io.to(roomId).emit('ONLINE_USERS', users);
 }
 
-function addSocketToRoom(socket, roomId, username) {
+function addSocketToRoom(io, socket, roomId, username, avatar) {
+  if (socket.currentRoom && socket.currentRoom !== roomId) {
+    removeSocketFromRoom(io, socket, socket.currentRoom);
+  }
+
   socket.join(roomId);
-  if (!roomUsers[roomId]) roomUsers[roomId] = new Map();
-  roomUsers[roomId].set(socket.id, { userId: socket.userId, username });
   socket.currentRoom = roomId;
   socket.username = username;
+
+  if (!roomUsers[roomId]) {
+    roomUsers[roomId] = new Map();
+  }
+
+  const userIdStr = String(socket.userId);
+  const userEntry = roomUsers[roomId].get(userIdStr);
+  const isNewUser = !userEntry || userEntry.socketIds.size === 0;
+
+  if (userEntry) {
+    userEntry.socketIds.add(socket.id);
+    userEntry.username = username || userEntry.username;
+    if (avatar) userEntry.avatar = avatar;
+  } else {
+    roomUsers[roomId].set(userIdStr, {
+      userId: userIdStr,
+      username,
+      avatar: avatar || socket.avatar || '',
+      socketIds: new Set([socket.id]),
+    });
+  }
+
+  if (isNewUser) {
+    socket.to(roomId).emit('USER_JOINED', { userId: userIdStr, username });
+  }
+
+  broadcastOnlineCount(io, roomId);
 }
 
 function removeSocketFromRoom(io, socket, roomId) {
   if (!roomId) return;
   socket.leave(roomId);
-  if (roomUsers[roomId]) {
-    roomUsers[roomId].delete(socket.id);
-    if (roomUsers[roomId].size === 0) {
-      delete roomUsers[roomId];
-    }
-  }
   if (socket.currentRoom === roomId) {
     socket.currentRoom = null;
   }
+
+  if (roomUsers[roomId]) {
+    const userIdStr = String(socket.userId);
+    const userEntry = roomUsers[roomId].get(userIdStr);
+    if (userEntry) {
+      userEntry.socketIds.delete(socket.id);
+      if (userEntry.socketIds.size === 0) {
+        roomUsers[roomId].delete(userIdStr);
+        socket.to(roomId).emit('USER_LEFT', {
+          userId: userIdStr,
+          username: socket.username || userEntry.username,
+        });
+      }
+    }
+
+    if (roomUsers[roomId].size === 0) {
+      delete roomUsers[roomId];
+      workspaceWatcherService.stopWatching(roomId);
+    }
+  }
+
   broadcastOnlineCount(io, roomId);
 }
 
@@ -130,18 +186,24 @@ const editorSocket = (io) => {
           return;
         }
 
-        const room = await Room.findOne({ roomId });
+        const room = await Room.findOne({ roomId }).select('_id name').lean();
         if (!room) {
           logger.warn('ROOM', `Room not found for JOIN_ROOM: ${roomId}`, { userId: socket.userId });
           socket.emit('error', { message: 'Room not found' });
           return;
         }
 
-        addSocketToRoom(socket, roomId, username);
-        socket.to(roomId).emit('USER_JOINED', { userId: socket.userId, username });
-        broadcastOnlineCount(io, roomId);
+        addSocketToRoom(io, socket, roomId, username, socket.avatar);
+
+        // Start watching room workspace and sync DB files to disk in background
+        workspaceWatcherService.syncDatabaseFilesToDisk(roomId).then(() => {
+          workspaceWatcherService.startWatching(roomId, io);
+        }).catch((err) => {
+          logger.warn('WATCHER', `Async watcher init error: ${err.message}`);
+        });
+
         // Send current room users to the joining socket so they know who is online
-        const currentUsers = Array.from(roomUsers[roomId]?.values() ?? []);
+        const currentUsers = getRoomUsers(roomId);
         socket.emit('ONLINE_USERS', currentUsers);
         socket.emit('room-joined', { roomId });
       } catch (err) {
@@ -153,20 +215,23 @@ const editorSocket = (io) => {
     // ─── join-room (legacy) ──────────────────────────────────────
     socket.on('join-room', async ({ roomId, username }) => {
       try {
-        const room = await Room.findOne({ roomId });
+        const room = await Room.findOne({ roomId }).select('_id currentCode').lean();
         if (!room) {
           socket.emit('error', { message: 'Room not found' });
           return;
         }
 
-        addSocketToRoom(socket, roomId, username);
+        addSocketToRoom(io, socket, roomId, username, socket.avatar);
 
-        socket.to(roomId).emit('USER_JOINED', { userId: socket.userId, username });
-        broadcastOnlineCount(io, roomId);
-        // Send current room users to the joining socket so they know who is online
-        const currentUsers = Array.from(roomUsers[roomId]?.values() ?? []);
+        workspaceWatcherService.syncDatabaseFilesToDisk(roomId).then(() => {
+          workspaceWatcherService.startWatching(roomId, io);
+        }).catch((err) => {
+          logger.warn('WATCHER', `Async watcher init error: ${err.message}`);
+        });
+
+        const currentUsers = getRoomUsers(roomId);
         socket.emit('ONLINE_USERS', currentUsers);
-        socket.emit('receive-code-change', { code: room.currentCode });
+        socket.emit('receive-code-change', { code: room.currentCode || '' });
         socket.emit('room-joined', { roomId });
 
         console.log(`👤 ${username} joined room: ${roomId}`);
@@ -186,6 +251,7 @@ const editorSocket = (io) => {
         socket.to(roomId).emit('CODE_UPDATE', { filePath, content });
         console.log(`CODE_UPDATE roomId=${roomId} filePath=${filePath}`);
         scheduleFilePersist(roomId, filePath, content);
+        workspaceWatcherService.writeFileFromEditor(roomId, filePath, content);
       } catch (err) {
         console.error('CODE_CHANGE error:', err.message);
       }
@@ -197,6 +263,7 @@ const editorSocket = (io) => {
         console.log('FILE_CREATED', { roomId, file, socketId: socket.id });
         if (!roomId || !file) return;
         socket.to(roomId).emit('FILE_CREATED', { file });
+        workspaceWatcherService.createItemFromEditor(roomId, file);
       } catch (err) {
         console.error('FILE_CREATED error:', err.message);
       }
@@ -208,6 +275,7 @@ const editorSocket = (io) => {
         console.log('FILE_RENAMED', { roomId, oldPath, newPath, newName, socketId: socket.id });
         if (!roomId || !oldPath || !newPath) return;
         socket.to(roomId).emit('FILE_RENAMED', { oldPath, newPath, newName });
+        workspaceWatcherService.renameItemOnDisk(roomId, oldPath, newPath);
       } catch (err) {
         console.error('FILE_RENAMED error:', err.message);
       }
@@ -219,6 +287,7 @@ const editorSocket = (io) => {
         console.log('FILE_DELETED', { roomId, path, socketId: socket.id });
         if (!roomId || !path) return;
         socket.to(roomId).emit('FILE_DELETED', { path });
+        workspaceWatcherService.deleteItemFromDisk(roomId, path);
       } catch (err) {
         console.error('FILE_DELETED error:', err.message);
       }
@@ -230,6 +299,7 @@ const editorSocket = (io) => {
         console.log('FOLDER_CREATED', { roomId, folder, socketId: socket.id });
         if (!roomId || !folder) return;
         socket.to(roomId).emit('FOLDER_CREATED', { folder });
+        workspaceWatcherService.createItemFromEditor(roomId, folder);
       } catch (err) {
         console.error('FOLDER_CREATED error:', err.message);
       }
@@ -241,6 +311,7 @@ const editorSocket = (io) => {
         console.log('FOLDER_RENAMED', { roomId, oldPath, newPath, newName, socketId: socket.id });
         if (!roomId || !oldPath || !newPath) return;
         socket.to(roomId).emit('FOLDER_RENAMED', { oldPath, newPath, newName });
+        workspaceWatcherService.renameItemOnDisk(roomId, oldPath, newPath);
       } catch (err) {
         console.error('FOLDER_RENAMED error:', err.message);
       }
@@ -252,6 +323,7 @@ const editorSocket = (io) => {
         console.log('FOLDER_DELETED', { roomId, path, socketId: socket.id });
         if (!roomId || !path) return;
         socket.to(roomId).emit('FOLDER_DELETED', { path });
+        workspaceWatcherService.deleteItemFromDisk(roomId, path);
       } catch (err) {
         console.error('FOLDER_DELETED error:', err.message);
       }
@@ -282,16 +354,66 @@ const editorSocket = (io) => {
       }
     });
 
+    // ─── TERMINAL EVENTS ─────────────────────────────────────────
+    socket.on('terminal:start', async (payload = {}) => {
+      const terminalId = payload.terminalId ? String(payload.terminalId) : '1';
+      try {
+        const roomId = parseRoomPayload(payload) || socket.currentRoom;
+        if (!roomId) {
+          socket.emit('terminal:output', {
+            terminalId,
+            data: '\r\n\x1b[31m[Error: Room ID required to initialize terminal]\x1b[0m\r\n',
+          });
+          return;
+        }
+
+        logger.info('TERMINAL', `Starting terminal session for socket ${socket.id} (tab: ${terminalId}) in room ${roomId}`);
+        await terminalWorkspaceService.startTerminal(socket, roomId, {
+          terminalId,
+          cols: payload.cols,
+          rows: payload.rows,
+          roomName: payload.roomName,
+        });
+      } catch (err) {
+        logger.error('TERMINAL', `terminal:start error: ${err.message}`, { socketId: socket.id, terminalId, stack: err.stack });
+        socket.emit('terminal:output', {
+          terminalId,
+          data: `\r\n\x1b[31m[Terminal Error: ${err.message}]\x1b[0m\r\n`,
+        });
+      }
+    });
+
+    socket.on('terminal:input', ({ terminalId, data } = {}) => {
+      try {
+        terminalWorkspaceService.handleInput(socket.id, terminalId || '1', data);
+      } catch (err) {
+        logger.error('TERMINAL', `terminal:input error: ${err.message}`, { socketId: socket.id, terminalId });
+      }
+    });
+
+    socket.on('terminal:resize', ({ terminalId, cols, rows } = {}) => {
+      try {
+        terminalWorkspaceService.handleResize(socket.id, terminalId || '1', cols, rows);
+      } catch (err) {
+        logger.error('TERMINAL', `terminal:resize error: ${err.message}`, { socketId: socket.id, terminalId });
+      }
+    });
+
+    socket.on('terminal:close', ({ terminalId } = {}) => {
+      try {
+        terminalWorkspaceService.closeTerminal(socket.id, terminalId);
+      } catch (err) {
+        logger.error('TERMINAL', `terminal:close error: ${err.message}`, { socketId: socket.id, terminalId });
+      }
+    });
+
     // ─── LEAVE_ROOM ──────────────────────────────────────────────
     socket.on('LEAVE_ROOM', async (payload) => {
       const roomId = parseRoomPayload(payload) || socket.currentRoom;
+      terminalWorkspaceService.closeTerminal(socket.id);
       if (!roomId) return;
       await flushRoomPersists(roomId);
       logger.roomEvent('LEAVE_ROOM', roomId, socket.userId, socket.username);
-      socket.to(roomId).emit('USER_LEFT', {
-        userId: socket.userId,
-        username: socket.username,
-      });
       removeSocketFromRoom(io, socket, roomId);
     });
 
@@ -344,17 +466,24 @@ const editorSocket = (io) => {
       }
     });
 
+    // ─── disconnecting ────────────────────────────────────────────
+    socket.on('disconnecting', () => {
+      terminalWorkspaceService.closeTerminal(socket.id);
+      for (const r of socket.rooms) {
+        if (r !== socket.id) {
+          removeSocketFromRoom(io, socket, r);
+        }
+      }
+    });
+
     // ─── disconnect ───────────────────────────────────────────────
     socket.on('disconnect', async (reason) => {
       const roomId = socket.currentRoom;
+      terminalWorkspaceService.closeTerminal(socket.id);
       logger.socketDisconnect(socket.id, socket.userId, reason);
       if (roomId) {
         await flushRoomPersists(roomId);
         logger.roomEvent('USER_LEFT_DISCONNECT', roomId, socket.userId, socket.username);
-        socket.to(roomId).emit('USER_LEFT', {
-          userId: socket.userId,
-          username: socket.username,
-        });
         removeSocketFromRoom(io, socket, roomId);
       }
     });

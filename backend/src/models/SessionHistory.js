@@ -32,4 +32,7 @@ const sessionHistorySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+sessionHistorySchema.index({ roomId: 1, createdAt: -1 });
+sessionHistorySchema.index({ savedBy: 1 });
+
 module.exports = mongoose.model('SessionHistory', sessionHistorySchema);

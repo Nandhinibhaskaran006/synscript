@@ -6,6 +6,7 @@ import { addMemberToRoom } from "../lib/user-rooms";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 import { useRoomSocket } from "../hooks/useRoomSocket";
+import { TerminalPanel } from "../components/TerminalPanel";
 import Editor, { type Monaco } from "@monaco-editor/react";
 import type { editor, IDisposable } from "monaco-editor";
 import { defineCustomTheme } from "../lib/monaco-theme";
@@ -895,9 +896,7 @@ function RoomPage() {
         };
         filesRef.current = nextFiles;
         setFiles(nextFiles);
-        persistFiles(nextFiles, true);
-      } else {
-        persistFiles(filesRef.current, true);
+        persistFiles(nextFiles, false);
       }
     }
     setActiveFile(path);
@@ -1374,14 +1373,14 @@ function RoomPage() {
   // Create a map of userId to username for online status tracking
   const memberMap = new Map<string, string>();
   rawMembers.forEach((m: any) => {
-    const userId = m._id || m.userId || m;
+    const userId = String(m._id || m.userId || m);
     const username = m.username || m;
     memberMap.set(userId, username);
   });
   
   // Add creator to map
   if (roomCreator?._id) {
-    memberMap.set(roomCreator._id, roomCreator.username || user?.username || "Creator");
+    memberMap.set(String(roomCreator._id), roomCreator.username || user?.username || "Creator");
   }
   
   // Dynamic list starting with room creator, filtering out duplicates
@@ -1452,8 +1451,8 @@ function RoomPage() {
           if (savedWsRaw) {
             const parsedWs = JSON.parse(savedWsRaw);
             if (parsedWs && typeof parsedWs === "object") {
-              if (parsedWs.files && typeof parsedWs.files === "object" && Object.keys(parsedWs.files).length > 0) {
-                initialFiles = { ...apiFiles, ...parsedWs.files };
+              if (Object.keys(initialFiles).length === 0 && parsedWs.files && typeof parsedWs.files === "object") {
+                initialFiles = { ...parsedWs.files };
               }
               if (Array.isArray(parsedWs.expandedFolders)) {
                 for (const folderPath of parsedWs.expandedFolders) {
@@ -1741,8 +1740,10 @@ function RoomPage() {
   const handleUserJoined = useCallback((payload: { userId: string; username: string }) => {
     const { userId } = payload;
     if (!userId) return;
+    const idStr = String(userId);
     setOnlineUsers(prev => {
-      const next = new Set([...prev, userId]);
+      const next = new Set(prev);
+      next.add(idStr);
       return next;
     });
   }, []);
@@ -1750,22 +1751,23 @@ function RoomPage() {
   const handleUserLeft = useCallback((payload: { userId: string; username: string }) => {
     const { userId } = payload;
     if (!userId) return;
+    const idStr = String(userId);
     setOnlineUsers(prev => {
       const next = new Set(prev);
-      next.delete(userId);
+      next.delete(idStr);
       return next;
     });
     // Remove cursor for this user
     setRemoteCursors(prev => {
       const next = new Map(prev);
-      next.delete(userId);
+      next.delete(idStr);
       return next;
     });
   }, []);
 
   const handleOnlineUsers = useCallback((users: { userId: string; username: string }[]) => {
-    if (!users || users.length === 0) return;
-    const userIds = new Set(users.map(u => u.userId));
+    if (!Array.isArray(users)) return;
+    const userIds = new Set(users.map(u => String(u.userId)).filter(Boolean));
     setOnlineUsers(userIds);
   }, []);
 
@@ -1804,6 +1806,78 @@ function RoomPage() {
     });
   }, [user?._id]);
 
+  const handleWorkspaceFilesSync = useCallback((payload: any) => {
+    const rawList = Array.isArray(payload) ? payload : payload?.files;
+    if (!Array.isArray(rawList)) return;
+
+    setFiles((prev) => {
+      const next: FileSystem = {};
+      const newPathSet = new Set<string>();
+
+      for (const item of rawList) {
+        if (!item || !item.path) continue;
+        newPathSet.add(item.path);
+
+        const existing = prev[item.path];
+        const isOpen = item.type === "folder" ? (existing?.isOpen ?? true) : true;
+        const content = typeof item.content === "string" ? item.content : (existing?.content ?? "");
+
+        next[item.path] = {
+          path: item.path,
+          name: item.name || item.path.split("/").pop() || item.path,
+          type: (item.type === "folder" ? "folder" : "file") as "file" | "folder",
+          content,
+          isOpen,
+        };
+
+        if (item.type !== "folder" && monacoModelsRef.current) {
+          const model = monacoModelsRef.current.get(item.path);
+          if (model && !model.isDisposed() && typeof item.content === "string" && model.getValue() !== item.content) {
+            isRemoteUpdate.current = true;
+            model.setValue(item.content);
+            isRemoteUpdate.current = false;
+          }
+        }
+      }
+
+      // Cleanup Monaco models for deleted files
+      if (monacoModelsRef.current) {
+        for (const [filePath, model] of monacoModelsRef.current.entries()) {
+          if (!newPathSet.has(filePath)) {
+            if (!model.isDisposed()) {
+              model.dispose();
+            }
+            monacoModelsRef.current.delete(filePath);
+          }
+        }
+      }
+
+      // Close tabs for deleted files
+      setOpenTabs((prevTabs) => prevTabs.filter((tabPath) => newPathSet.has(tabPath)));
+
+      // Update active file if current active file was deleted
+      setActiveFile((currentActive) => {
+        if (currentActive && !newPathSet.has(currentActive)) {
+          const remainingTabs = openTabsRef.current.filter((tabPath) => newPathSet.has(tabPath));
+          return remainingTabs.length > 0 ? remainingTabs[remainingTabs.length - 1] : null;
+        }
+        return currentActive;
+      });
+
+      return next;
+    });
+  }, []);
+
+  const terminalDataListenerRef = useRef<((payload: { terminalId?: string; data: string } | string) => void) | null>(null);
+  const registerTerminalDataListener = useCallback((listener: (payload: { terminalId?: string; data: string } | string) => void) => {
+    terminalDataListenerRef.current = listener;
+    return () => {
+      if (terminalDataListenerRef.current === listener) {
+        terminalDataListenerRef.current = null;
+      }
+    };
+  }, []);
+
   const { 
     emitFileChange, 
     emitFileCreated,
@@ -1814,6 +1888,10 @@ function RoomPage() {
     emitFolderDeleted,
     emitCursorMove,
     emitSendMessage,
+    emitTerminalStart,
+    emitTerminalInput,
+    emitTerminalResize,
+    emitTerminalClose,
     onlineCount 
   } = useRoomSocket({
     roomId,
@@ -1826,11 +1904,17 @@ function RoomPage() {
     onFolderCreated: handleRemoteFolderCreated,
     onFolderRenamed: handleRemoteFolderRenamed,
     onFolderDeleted: handleRemoteFolderDeleted,
+    onWorkspaceFilesSync: handleWorkspaceFilesSync,
     onUserJoined: handleUserJoined,
     onUserLeft: handleUserLeft,
     onOnlineUsers: handleOnlineUsers,
     onCursorUpdate: handleCursorUpdate,
     onChatMessage: handleIncomingChatMessage,
+    onTerminalOutput: (payload) => {
+      if (terminalDataListenerRef.current) {
+        terminalDataListenerRef.current(payload);
+      }
+    },
     onError: (message) => {
       console.error("Room socket error:", message);
     },
@@ -2486,10 +2570,19 @@ function RoomPage() {
             </button>
 
             <button
-              onClick={() => setIsBottomPanelOpen((open) => !open)}
-              title={isBottomPanelOpen ? "Hide Terminal / Output Panel" : "Show Terminal / Output Panel"}
+              onClick={() => {
+                if (!isBottomPanelOpen) {
+                  setIsBottomPanelOpen(true);
+                  setBottomPanelTab("terminal");
+                } else if (bottomPanelTab === "terminal") {
+                  setIsBottomPanelOpen(false);
+                } else {
+                  setBottomPanelTab("terminal");
+                }
+              }}
+              title={isBottomPanelOpen && bottomPanelTab === "terminal" ? "Hide Terminal Panel" : "Show Terminal Panel"}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
-                isBottomPanelOpen
+                isBottomPanelOpen && bottomPanelTab === "terminal"
                   ? "bg-[#3B82F6]/20 border-[#3B82F6]/40 text-[#adc6ff]"
                   : "bg-white/5 border-white/10 text-[#c2c6d6] hover:bg-white/10"
               }`}
@@ -3601,7 +3694,7 @@ function RoomPage() {
                 </div>
 
                 {/* Bottom Panel Content Body */}
-                <div className="flex-1 overflow-y-auto p-4 font-mono text-xs custom-scrollbar bg-editor-bg">
+                <div className={`flex-1 min-h-0 ${bottomPanelTab === "terminal" ? "overflow-hidden flex flex-col p-0" : "overflow-y-auto p-4"} font-mono text-xs custom-scrollbar bg-editor-bg`}>
                   {bottomPanelTab === "output" && (
                     <div className="space-y-3">
                       {/* Meta banner */}
@@ -3662,29 +3755,18 @@ function RoomPage() {
                     </div>
                   )}
 
-                  {bottomPanelTab === "terminal" && (
-                    <div className="font-code-sm text-on-surface">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-status-active">➜</span>
-                        <span className="text-primary">{room?.name ?? roomId}</span>
-                        <span className="text-syntax-pink">git:(main)</span>
-                        <span className="text-on-surface-variant">npm start</span>
-                      </div>
-                      <div className="text-outline-variant mb-1">
-                        &gt; {room?.name ?? roomId}@1.0.0 start
-                      </div>
-                      <div className="text-outline-variant mb-1">&gt; ts-node src/index.ts</div>
-                      <div className="text-outline-variant mb-1">&nbsp;</div>
-                      <div className="text-status-active flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                        <span>[Ready] Server is listening on port 3000</span>
-                      </div>
-                      <div className="text-status-active flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                        <span>[Success] Database connected (PostgreSQL)</span>
-                      </div>
-                    </div>
-                  )}
+                  <div className={`h-full w-full flex-1 min-h-0 ${bottomPanelTab === "terminal" ? "block" : "hidden"}`}>
+                    <TerminalPanel
+                      roomId={roomId}
+                      roomName={room?.name || "Workspace"}
+                      isVisible={isBottomPanelOpen && bottomPanelTab === "terminal"}
+                      onInput={emitTerminalInput}
+                      onResize={emitTerminalResize}
+                      onStart={emitTerminalStart}
+                      onClose={emitTerminalClose}
+                      onRegisterDataListener={registerTerminalDataListener}
+                    />
+                  </div>
 
                   {bottomPanelTab === "debug" && (
                     <div className="text-outline italic text-xs py-4 text-center">

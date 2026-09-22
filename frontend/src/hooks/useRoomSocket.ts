@@ -24,8 +24,10 @@ type UseRoomSocketOptions = {
   onUserJoined?: (payload: { userId: string; username: string }) => void;
   onUserLeft?: (payload: { userId: string; username: string }) => void;
   onOnlineUsers?: (users: { userId: string; username: string }[]) => void;
-  /** Cursor events */
-  onCursorUpdate?: (payload: { userId: string; filePath: string; position: { lineNumber: number; column: number } }) => void;
+  /** Workspace File System Sync */
+  onWorkspaceFilesSync?: (files: Array<{ path: string; name: string; type: string; content?: string; isOpen?: boolean }>) => void;
+  /** Terminal events */
+  onTerminalOutput?: (payload: { terminalId?: string; data: string }) => void;
   /** Chat events */
   onChatMessage?: (payload: {
     _id?: string;
@@ -62,6 +64,8 @@ export function useRoomSocket({
   onUserLeft,
   onOnlineUsers,
   onCursorUpdate,
+  onWorkspaceFilesSync,
+  onTerminalOutput,
   onChatMessage,
 }: UseRoomSocketOptions) {
   const socketRef = useRef<Socket | null>(null);
@@ -81,6 +85,8 @@ export function useRoomSocket({
   const onUserLeftRef = useRef(onUserLeft);
   const onOnlineUsersRef = useRef(onOnlineUsers);
   const onCursorUpdateRef = useRef(onCursorUpdate);
+  const onWorkspaceFilesSyncRef = useRef(onWorkspaceFilesSync);
+  const onTerminalOutputRef = useRef(onTerminalOutput);
   const onChatMessageRef = useRef(onChatMessage);
 
   onFileChangeRef.current = onFileChange;
@@ -97,6 +103,8 @@ export function useRoomSocket({
   onUserLeftRef.current = onUserLeft;
   onOnlineUsersRef.current = onOnlineUsers;
   onCursorUpdateRef.current = onCursorUpdate;
+  onWorkspaceFilesSyncRef.current = onWorkspaceFilesSync;
+  onTerminalOutputRef.current = onTerminalOutput;
   onChatMessageRef.current = onChatMessage;
 
   /** Emit per-file CODE_CHANGE from local edits only */
@@ -202,6 +210,41 @@ export function useRoomSocket({
     [roomId]
   );
 
+  /** Emit terminal commands with multi-tab support */
+  const emitTerminalStart = useCallback(
+    (cols?: number, rows?: number, roomName?: string, terminalId: string = "1") => {
+      const socket = socketRef.current;
+      if (!socket?.connected) return;
+      console.log("terminal:start", { roomId, cols, rows, roomName, terminalId });
+      socket.emit("terminal:start", { roomId, cols, rows, roomName, terminalId });
+    },
+    [roomId]
+  );
+
+  const emitTerminalInput = useCallback(
+    (data: string, terminalId: string = "1") => {
+      const socket = socketRef.current;
+      if (!socket?.connected) return;
+      socket.emit("terminal:input", { roomId, terminalId, data });
+    },
+    [roomId]
+  );
+
+  const emitTerminalResize = useCallback(
+    (cols: number, rows: number, terminalId: string = "1") => {
+      const socket = socketRef.current;
+      if (!socket?.connected) return;
+      socket.emit("terminal:resize", { roomId, terminalId, cols, rows });
+    },
+    [roomId]
+  );
+
+  const emitTerminalClose = useCallback((terminalId?: string) => {
+    const socket = socketRef.current;
+    if (!socket?.connected) return;
+    socket.emit("terminal:close", { roomId, terminalId });
+  }, [roomId]);
+
   useEffect(() => {
     if (!enabled || !roomId || !username) return;
 
@@ -226,16 +269,24 @@ export function useRoomSocket({
     };
 
     const handleRoomUsers = (users: { userId: string; username: string }[]) => {
-      const count = users.length;
+      if (!Array.isArray(users)) return;
+      const uniqueMap = new Map<string, { userId: string; username: string }>();
+      for (const u of users) {
+        if (u && u.userId) {
+          uniqueMap.set(String(u.userId), u);
+        }
+      }
+      const uniqueList = Array.from(uniqueMap.values());
+      const count = uniqueList.length;
       setOnlineCount(count);
       onUsersChangeRef.current?.(count);
-      // Also update the online users set so presence dots work
-      onOnlineUsersRef.current?.(users);
+      onOnlineUsersRef.current?.(uniqueList);
     };
 
     const handleOnlineCount = ({ count }: { count: number }) => {
-      setOnlineCount(count);
-      onUsersChangeRef.current?.(count);
+      const validCount = typeof count === "number" ? Math.max(0, count) : 0;
+      setOnlineCount(validCount);
+      onUsersChangeRef.current?.(validCount);
     };
 
     const handleRoomJoined = (payload: { roomId: string }) => {
@@ -284,18 +335,39 @@ export function useRoomSocket({
 
     const handleOnlineUsers = (users: { userId: string; username: string }[]) => {
       console.log("🔔 ONLINE_USERS received", users);
-      onOnlineUsersRef.current?.(users);
+      if (!Array.isArray(users)) return;
+      const uniqueMap = new Map<string, { userId: string; username: string }>();
+      for (const u of users) {
+        if (u && u.userId) {
+          uniqueMap.set(String(u.userId), u);
+        }
+      }
+      const uniqueList = Array.from(uniqueMap.values());
+      const count = uniqueList.length;
+      setOnlineCount(count);
+      onUsersChangeRef.current?.(count);
+      onOnlineUsersRef.current?.(uniqueList);
     };
 
     const handleCursorUpdate = (payload: { userId: string; filePath: string; position: { lineNumber: number; column: number } }) => {
-      // console.log("🔔 CURSOR_UPDATE received", payload);
-      // console.log("🔔 onCursorUpdateRef.current exists:", !!onCursorUpdateRef.current);
       onCursorUpdateRef.current?.(payload);
     };
 
     const handleReceiveMessage = (payload: any) => {
       console.log("🔔 receive-message received", payload);
       onChatMessageRef.current?.(payload);
+    };
+
+    const handleTerminalOutput = (payload: { terminalId?: string; data: string }) => {
+      onTerminalOutputRef.current?.(payload);
+    };
+
+    const handleWorkspaceFilesSync = (payload: any) => {
+      console.log("📂 WORKSPACE_FILES_SYNC received", payload);
+      const list = Array.isArray(payload) ? payload : payload?.files;
+      if (Array.isArray(list)) {
+        onWorkspaceFilesSyncRef.current?.(list);
+      }
     };
 
     const handleDisconnect = () => {
@@ -322,6 +394,8 @@ export function useRoomSocket({
     socket.on("ONLINE_USERS", handleOnlineUsers);
     socket.on("CURSOR_UPDATE", handleCursorUpdate);
     socket.on("receive-message", handleReceiveMessage);
+    socket.on("terminal:output", handleTerminalOutput);
+    socket.on("WORKSPACE_FILES_SYNC", handleWorkspaceFilesSync);
     socket.on("disconnect", handleDisconnect);
     socket.on("error", handleError);
 
@@ -344,6 +418,8 @@ export function useRoomSocket({
       socket.off("ONLINE_USERS", handleOnlineUsers);
       socket.off("CURSOR_UPDATE", handleCursorUpdate);
       socket.off("receive-message", handleReceiveMessage);
+      socket.off("terminal:output", handleTerminalOutput);
+      socket.off("WORKSPACE_FILES_SYNC", handleWorkspaceFilesSync);
       socket.off("disconnect", handleDisconnect);
       socket.off("error", handleError);
       socket.disconnect();
@@ -361,6 +437,11 @@ export function useRoomSocket({
     emitFolderDeleted,
     emitCursorMove,
     emitSendMessage,
-    onlineCount 
+    emitTerminalStart,
+    emitTerminalInput,
+    emitTerminalResize,
+    emitTerminalClose,
+    onlineCount,
+    socketRef,
   };
 }

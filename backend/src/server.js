@@ -83,6 +83,8 @@ const io = new Server(httpServer, {
     methods: ['GET', 'POST'],
     credentials: true,
   },
+  pingTimeout: 10000,
+  pingInterval: 5000,
 });
 
 editorSocket(io);

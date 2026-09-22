@@ -82,6 +82,12 @@ const joinRoom = async (req, res) => {
   }
 };
 
+const { filterIgnoredFiles } = require('../utils/ignoreRules');
+
+function filterProjectFiles(files) {
+  return filterIgnoredFiles(files);
+}
+
 // @desc    Get room details
 // @route   GET /api/rooms/:roomId
 // @access  Private
@@ -89,10 +95,17 @@ const getRoomDetails = async (req, res) => {
   try {
     const room = await Room.findOne({ roomId: req.params.roomId })
       .populate('owner', 'username email')
-      .populate('members', 'username email');
+      .populate('members', 'username email')
+      .lean();
 
     if (!room) {
       return res.status(404).json({ message: 'Room not found' });
+    }
+
+    if (Array.isArray(room.files)) {
+      room.files = filterProjectFiles(room.files);
+    } else {
+      room.files = [];
     }
 
     res.json(room);
@@ -115,8 +128,10 @@ const saveSession = async (req, res) => {
       return res.status(404).json({ message: 'Room not found' });
     }
 
-    if (Array.isArray(req.body.files)) {
-      await replaceRoomFiles(roomId, req.body.files);
+    const cleanFiles = Array.isArray(req.body.files) ? filterProjectFiles(req.body.files) : null;
+
+    if (cleanFiles) {
+      await replaceRoomFiles(roomId, cleanFiles);
     } else {
       room.currentCode = code || room.currentCode;
       if (language) room.language = language;
@@ -130,7 +145,7 @@ const saveSession = async (req, res) => {
       code: code || room.currentCode,
       language: language || room.language,
       label: label || `Snapshot ${new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}`,
-      files: Array.isArray(req.body.files) ? req.body.files : (room.files || []),
+      files: cleanFiles || filterProjectFiles(room.files || []),
     });
 
     res.status(201).json({ message: 'Session saved successfully', snapshot });
@@ -153,9 +168,11 @@ const getVersionHistory = async (req, res) => {
     }
 
     const history = await SessionHistory.find({ roomId })
+      .select('-files')
       .populate('savedBy', 'username')
       .sort({ createdAt: -1 })
-      .limit(50);
+      .limit(50)
+      .lean();
 
     res.json(history);
   } catch (error) {
@@ -170,9 +187,11 @@ const getVersionHistory = async (req, res) => {
 const getUserRooms = async (req, res) => {
   try {
     const rooms = await Room.find({ members: req.user._id })
+      .select('-files')
       .populate('owner', 'username email')
       .populate('members', 'username email')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     res.json(rooms);
   } catch (error) {
     console.error('GetUserRooms error:', error.message);
@@ -301,7 +320,8 @@ const getRoomMessages = async (req, res) => {
     const messages = await ChatMessage.find({ roomId })
       .populate('sender', 'username email avatar')
       .sort({ createdAt: 1 })
-      .limit(300);
+      .limit(300)
+      .lean();
 
     const formattedMessages = messages.map((msg) => {
       const senderObj = msg.sender && typeof msg.sender === 'object' ? msg.sender : null;
