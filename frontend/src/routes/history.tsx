@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState, useRef } from "react";
 import { AppShell } from "../components/AppShell";
+import { useRequireAuth } from "../hooks/useRequireAuth";
 import * as monaco from "monaco-editor";
 import { getUserRooms } from "../lib/user-rooms";
 import api from "../api/axios";
@@ -25,6 +26,7 @@ function formatDate(iso: string): string {
 }
 
 function HistoryPage() {
+  const { user } = useRequireAuth();
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -39,7 +41,7 @@ function HistoryPage() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !user) return;
     const activeRoomId =
       localStorage.getItem("syncscript_active_roomId") ||
       getUserRooms()[0]?.id ||
@@ -57,7 +59,7 @@ function HistoryPage() {
       }
     }
     loadHistory();
-  }, []);
+  }, [user]);
 
   // Initialize and clean up Diff Editor
   useEffect(() => {

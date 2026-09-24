@@ -1,8 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { isLoggedIn, setRedirect } from "@/lib/auth";
 import { AppShell } from "../components/AppShell";
-import { useAuth } from "../context/AuthContext";
+import { useRequireAuth } from "../hooks/useRequireAuth";
 import api from "../api/axios";
 
 type Room = {
@@ -21,15 +20,7 @@ export const Route = createFileRoute("/rooms/")({
 });
 
 function RoomsPage() {
-  const { user } = useAuth();
-
-  useEffect(() => {
-    if (!isLoggedIn()) {
-      setRedirect("/rooms");
-      window.location.assign("/login");
-    }
-  }, []);
-
+  const { user, loading: authLoading } = useRequireAuth();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -45,9 +36,10 @@ function RoomsPage() {
   };
 
   useEffect(() => {
-    if (!isLoggedIn()) return;
-    loadRooms();
-  }, []);
+    if (user) {
+      loadRooms();
+    }
+  }, [user]);
 
   const activeRoomId = typeof window !== "undefined" ? localStorage.getItem("syncscript_active_roomId") : null;
   const activeRoom = activeRoomId ? rooms.find((r) => r.roomId === activeRoomId) : null;

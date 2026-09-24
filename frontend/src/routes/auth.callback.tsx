@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { takeRedirect } from "../lib/auth";
 
 export const Route = createFileRoute("/auth/callback")({
   head: () => ({ meta: [{ title: "Authenticating | SYNCSCRIPT" }] }),
@@ -33,7 +34,8 @@ function AuthCallbackPage() {
           window.localStorage.setItem("token", token);
           window.localStorage.setItem("syncscript_loggedin", "1");
           await refreshAuth();
-          navigate({ to: "/dashboard" });
+          const dest = takeRedirect() || "/dashboard";
+          navigate({ to: dest as any });
         } catch (err: any) {
           console.error("OAuth token processing error:", err);
           setErrorMsg("Failed to authenticate session. Please try logging in again.");

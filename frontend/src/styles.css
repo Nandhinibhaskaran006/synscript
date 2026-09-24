@@ -157,34 +157,6 @@ button:focus-visible, [data-route]:focus-visible, [data-auth-route]:focus-visibl
 .custom-scrollbar-light::-webkit-scrollbar-thumb { background: #E5E7EB; border-radius: 10px; }
 .custom-scrollbar-light::-webkit-scrollbar-thumb:hover { background: #D1D5DB; }
 
-/* Floating screen-switcher nav */
-.screen-nav {
-  position: fixed;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-  display: flex;
-  gap: 4px;
-  padding: 6px;
-  background: rgba(15, 18, 25, 0.85);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 9999px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 0.05em;
-}
-.screen-nav a {
-  padding: 6px 12px;
-  border-radius: 9999px;
-  color: #c2c6d6;
-  text-decoration: none;
-  transition: all 0.2s;
-}
-.screen-nav a:hover { color: #adc6ff; }
-.screen-nav a.active { background: #adc6ff; color: #002e6a; }
-
 /* ── Monaco Editor overrides ─────────────────────────────────────────────── */
 
 /* Prevent global button hover glow from bleeding into Monaco's internal UI */

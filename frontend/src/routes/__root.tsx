@@ -87,35 +87,12 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
-function ScreenNav() {
-  const items = [
-    { to: "/", label: "Landing" },
-    { to: "/login", label: "Login" },
-    { to: "/register", label: "Register" },
-    { to: "/dashboard", label: "Dashboard" },
-    { to: "/rooms", label: "Rooms" },
-    { to: "/rooms/new", label: "New Room" },
-    { to: "/invite", label: "Invite" },
-    { to: "/history", label: "History" },
-  ];
-  return (
-    <nav className="screen-nav">
-      {items.map((it) => (
-        <Link key={it.to} to={it.to} activeOptions={{ exact: true }} activeProps={{ className: "active" }}>
-          {it.label}
-        </Link>
-      ))}
-    </nav>
-  );
-}
-
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <Outlet />
-        <ScreenNav />
       </AuthProvider>
     </QueryClientProvider>
   );

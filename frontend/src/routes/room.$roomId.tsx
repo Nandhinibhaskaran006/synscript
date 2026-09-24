@@ -5,6 +5,7 @@ import { QuickOpenModal } from "../components/QuickOpenModal";
 import { addMemberToRoom } from "../lib/user-rooms";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
+import { useRequireAuth } from "../hooks/useRequireAuth";
 import { useRoomSocket } from "../hooks/useRoomSocket";
 import { TerminalPanel } from "../components/TerminalPanel";
 import Editor, { type Monaco } from "@monaco-editor/react";
@@ -563,7 +564,7 @@ export const Route = createFileRoute("/room/$roomId")({
 function RoomPage() {
   const { roomId } = Route.useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user } = useRequireAuth();
   const [room, setRoom] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 

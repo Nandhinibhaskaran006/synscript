@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { useRequireAuth } from "../hooks/useRequireAuth";
 import { AppShell } from "../components/AppShell";
 import api from "../api/axios";
 
@@ -64,19 +65,14 @@ function ProfileSkeleton() {
 
 function ProfilePage() {
   const navigate = useNavigate();
-  const { user, loading, logout, updateProfile, isLoggedIn } = useAuth();
+  const { user, loading } = useRequireAuth();
+  const { logout, updateProfile } = useAuth();
   
   const [isEditing, setIsEditing] = useState(false);
   const [editUsername, setEditUsername] = useState("");
   const [stats, setStats] = useState<Stats | null>(null);
   const [myRooms, setMyRooms] = useState<Room[]>([]);
   const [fetching, setFetching] = useState(true);
-
-  useEffect(() => {
-    if (!loading && !isLoggedIn) { 
-      navigate({ to: "/login" }); 
-    }
-  }, [loading, isLoggedIn, navigate]);
 
   useEffect(() => {
     if (user?.username && !isEditing) {

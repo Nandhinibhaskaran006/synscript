@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { isLoggedIn, setRedirect } from "@/lib/auth";
+import { useRequireAuth } from "../hooks/useRequireAuth";
 import { AppShell } from "../components/AppShell";
 import api from "../api/axios";
 
@@ -34,10 +34,7 @@ type SentInvitation = {
 
 function InvitePage() {
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!isLoggedIn()) { setRedirect("/invite"); window.location.assign("/login"); }
-  }, []);
+  const { user } = useRequireAuth();
 
   const [received, setReceived] = useState<ReceivedInvitation[]>([]);
   const [sent, setSent] = useState<SentInvitation[]>([]);

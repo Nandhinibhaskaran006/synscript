@@ -25,4 +25,29 @@ api.interceptors.request.use(
   }
 );
 
+// Interceptor to handle unauthorized / expired token responses
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      if (typeof window !== 'undefined') {
+        const currentPath = window.location.pathname;
+        const publicRoutes = ['/login', '/register', '/', '/forgot-password', '/reset-password'];
+        const isPublic = publicRoutes.includes(currentPath) || currentPath.startsWith('/auth/callback');
+
+        window.localStorage.removeItem('token');
+        window.localStorage.removeItem('user');
+        window.localStorage.removeItem('syncscript_loggedin');
+
+        if (!isPublic) {
+          window.localStorage.setItem('syncscript_redirect_after_login', currentPath);
+          window.location.href = '/login';
+        }
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;
+

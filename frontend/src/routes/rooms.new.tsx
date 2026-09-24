@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { isLoggedIn, setRedirect } from "../lib/auth";
+import { useState } from "react";
+import { useRequireAuth } from "../hooks/useRequireAuth";
 import { AppShell } from "../components/AppShell";
 import api from "../api/axios";
 
@@ -13,9 +13,7 @@ const LANGS = ["Python", "JavaScript", "Java", "TypeScript", "Go", "Rust", "C++"
 
 function NewRoomPage() {
   const navigate = useNavigate();
-  useEffect(() => {
-    if (!isLoggedIn()) { setRedirect("/rooms/new"); navigate({ to: "/login" }); }
-  }, [navigate]);
+  const { user } = useRequireAuth();
 
   const [name, setName] = useState("");
   const [lang, setLang] = useState("Python");

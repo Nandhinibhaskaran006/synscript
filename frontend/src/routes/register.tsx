@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { RawScreen } from "../components/RawScreen";
 import { useAuth } from "../context/AuthContext";
+import { takeRedirect } from "../lib/auth";
 import html from "../screens/body_2.html?raw";
 
 export const Route = createFileRoute("/register")({
@@ -85,7 +86,8 @@ function RegisterPage() {
 
       try {
         await register(username, email, password);
-        navigate({ to: "/dashboard" });
+        const dest = takeRedirect() || "/dashboard";
+        navigate({ to: dest as any });
       } catch (err: any) {
         console.error("[RegisterPage] Registration error:", err);
         const errMsg =

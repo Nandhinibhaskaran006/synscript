@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AppShell } from "../components/AppShell";
-import { useAuth } from "../context/AuthContext";
+import { useRequireAuth } from "../hooks/useRequireAuth";
 import api from "../api/axios";
 
 export const Route = createFileRoute("/dashboard")({
@@ -32,11 +32,12 @@ type Stats = {
 
 function DashboardPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useRequireAuth();
   const [joinId, setJoinId] = useState("");
   const [search, setSearch] = useState("");
   const [rooms, setRooms] = useState<Room[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const loadData = async () => {
     try {
@@ -48,12 +49,16 @@ function DashboardPage() {
       setStats(statsRes.data);
     } catch (error) {
       console.error("Failed to load dashboard data", error);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (user) {
+      loadData();
+    }
+  }, [user]);
 
   const handleDelete = async (room: Room) => {
     const isOwner = user && room.owner?._id === user._id;
@@ -219,50 +224,88 @@ function DashboardPage() {
           </section>
 
           <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-[#1d2026]/70 rounded-xl overflow-hidden border border-white/5">
+            <div className="lg:col-span-2 bg-[#1d2026]/70 rounded-xl overflow-hidden border border-white/5 transition-all hover:border-[#3B82F6]/30">
               <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                <h4 className="font-bold text-[#e1e2eb]">System Health</h4>
-                <span className="text-[11px] text-[#8c909f] font-mono">Live database stats</span>
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[#3B82F6] text-[20px]">monitor_heart</span>
+                  <h4 className="font-bold text-[#e1e2eb]">System Health & Preferences</h4>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Link
+                    to="/profile"
+                    className="text-xs font-semibold px-2.5 py-1 rounded-md bg-[#3B82F6]/10 text-[#adc6ff] hover:bg-[#3B82F6] hover:text-white transition-all flex items-center gap-1 border border-[#3B82F6]/20"
+                    title="View & Edit Profile"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">account_circle</span>
+                    <span>Profile</span>
+                  </Link>
+                  <Link
+                    to="/settings"
+                    className="text-xs font-semibold px-2.5 py-1 rounded-md bg-white/5 text-[#c2c6d6] hover:bg-white/10 hover:text-white transition-all flex items-center gap-1 border border-white/10"
+                    title="System Settings"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">settings</span>
+                    <span>Settings</span>
+                  </Link>
+                </div>
               </div>
               <div className="p-6 h-40 flex items-end justify-around gap-1 px-8">
-                <div className="flex flex-col items-center justify-end h-full">
-                  <div className="text-3xl font-bold text-[#3B82F6] mb-2">{stats ? stats.totalRooms : rooms.length}</div>
-                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">My Rooms</div>
-                </div>
-                <div className="flex flex-col items-center justify-end h-full">
-                  <div className="text-3xl font-bold text-[#25C2A0] mb-2">{stats ? stats.ownedRooms : '-'}</div>
-                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">Owned</div>
-                </div>
-                <div className="flex flex-col items-center justify-end h-full">
-                  <div className="text-3xl font-bold text-[#adc6ff] mb-2">{stats ? stats.collaboratingRooms : '-'}</div>
-                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">Collaborating</div>
-                </div>
-                <div className="flex flex-col items-center justify-end h-full">
-                  <div className="text-3xl font-bold text-[#25C2A0] mb-2">{stats ? stats.totalUsers : '-'}</div>
-                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold">Total Users</div>
-                </div>
+                <Link to="/rooms" className="flex flex-col items-center justify-end h-full group/stat cursor-pointer hover:scale-105 transition-transform" title="View My Rooms">
+                  <div className="text-3xl font-bold text-[#3B82F6] mb-2 group-hover/stat:text-[#adc6ff] transition-colors">{stats ? stats.totalRooms : rooms.length}</div>
+                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold group-hover/stat:text-[#adc6ff] transition-colors flex items-center gap-1">
+                    My Rooms
+                    <span className="material-symbols-outlined text-[12px] opacity-0 group-hover/stat:opacity-100 transition-opacity">arrow_forward</span>
+                  </div>
+                </Link>
+                <Link to="/rooms" className="flex flex-col items-center justify-end h-full group/stat cursor-pointer hover:scale-105 transition-transform" title="View Owned Rooms">
+                  <div className="text-3xl font-bold text-[#25C2A0] mb-2 group-hover/stat:brightness-125 transition-all">{stats ? stats.ownedRooms : '-'}</div>
+                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold group-hover/stat:text-[#25C2A0] transition-colors flex items-center gap-1">
+                    Owned
+                    <span className="material-symbols-outlined text-[12px] opacity-0 group-hover/stat:opacity-100 transition-opacity">arrow_forward</span>
+                  </div>
+                </Link>
+                <Link to="/rooms" className="flex flex-col items-center justify-end h-full group/stat cursor-pointer hover:scale-105 transition-transform" title="View Collaborating Rooms">
+                  <div className="text-3xl font-bold text-[#adc6ff] mb-2 group-hover/stat:brightness-125 transition-all">{stats ? stats.collaboratingRooms : '-'}</div>
+                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold group-hover/stat:text-[#adc6ff] transition-colors flex items-center gap-1">
+                    Collaborating
+                    <span className="material-symbols-outlined text-[12px] opacity-0 group-hover/stat:opacity-100 transition-opacity">arrow_forward</span>
+                  </div>
+                </Link>
+                <Link to="/profile" className="flex flex-col items-center justify-end h-full group/stat cursor-pointer hover:scale-105 transition-transform" title="View Profile">
+                  <div className="text-3xl font-bold text-[#25C2A0] mb-2 group-hover/stat:brightness-125 transition-all">{stats ? stats.totalUsers : '-'}</div>
+                  <div className="text-xs text-[#8c909f] uppercase tracking-wider font-bold group-hover/stat:text-[#25C2A0] transition-colors flex items-center gap-1">
+                    Total Users
+                    <span className="material-symbols-outlined text-[12px] opacity-0 group-hover/stat:opacity-100 transition-opacity">arrow_forward</span>
+                  </div>
+                </Link>
               </div>
             </div>
 
             <div className="bg-[#1d2026]/70 rounded-xl p-6 border border-white/5 flex flex-col justify-between">
-              <h4 className="font-bold text-[#e1e2eb] mb-4">Quick Stats</h4>
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="font-bold text-[#e1e2eb]">Quick Stats</h4>
+                <Link to="/settings" className="text-xs text-[#8c909f] hover:text-[#3B82F6] flex items-center gap-1 font-semibold transition-colors">
+                  <span>Preferences</span>
+                  <span className="material-symbols-outlined text-[14px]">tune</span>
+                </Link>
+              </div>
               <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-[#8c909f]">Owned Rooms</span>
+                <Link to="/rooms" className="flex justify-between items-center group cursor-pointer hover:bg-white/5 p-1 rounded-md transition-colors">
+                  <span className="text-sm text-[#8c909f] group-hover:text-white transition-colors">Owned Rooms</span>
                   <span className="font-mono font-bold text-[#3B82F6]">{stats?.ownedRooms ?? 0}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-[#8c909f]">Joined Collaborations</span>
+                </Link>
+                <Link to="/rooms" className="flex justify-between items-center group cursor-pointer hover:bg-white/5 p-1 rounded-md transition-colors">
+                  <span className="text-sm text-[#8c909f] group-hover:text-white transition-colors">Joined Collaborations</span>
                   <span className="font-mono font-bold text-[#25C2A0]">{stats?.collaboratingRooms ?? 0}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-[#8c909f]">Pending Invitations</span>
+                </Link>
+                <Link to="/invite" className="flex justify-between items-center group cursor-pointer hover:bg-white/5 p-1 rounded-md transition-colors">
+                  <span className="text-sm text-[#8c909f] group-hover:text-white transition-colors">Pending Invitations</span>
                   <span className="font-mono font-bold text-[#adc6ff]">{stats?.pendingInvitations ?? 0}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-[#8c909f]">Saved Snapshots</span>
+                </Link>
+                <Link to="/history" className="flex justify-between items-center group cursor-pointer hover:bg-white/5 p-1 rounded-md transition-colors">
+                  <span className="text-sm text-[#8c909f] group-hover:text-white transition-colors">Saved Snapshots</span>
                   <span className="font-mono font-bold text-amber-400">{stats?.savedSessions ?? 0}</span>
-                </div>
+                </Link>
               </div>
             </div>
           </section>

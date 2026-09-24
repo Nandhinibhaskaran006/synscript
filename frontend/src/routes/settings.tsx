@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { isLoggedIn, setRedirect } from "@/lib/auth";
+import { useRequireAuth } from "../hooks/useRequireAuth";
 import { AppShell } from "../components/AppShell";
 import { useAuth } from "../context/AuthContext";
 
@@ -37,11 +37,8 @@ const inputClass = "w-full bg-[#0B0E14] border border-white/10 rounded-lg px-3 p
 
 function SettingsPage() {
   const navigate = useNavigate();
-  const { user, updateProfile } = useAuth();
-
-  useEffect(() => {
-    if (!isLoggedIn()) { setRedirect("/settings"); navigate({ to: "/login" }); }
-  }, [navigate]);
+  const { user } = useRequireAuth();
+  const { updateProfile } = useAuth();
 
   const [prefs, setPrefs] = useState<any>({
     name: "",
