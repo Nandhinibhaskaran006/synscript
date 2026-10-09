@@ -3,8 +3,11 @@ import { useEffect, useRef } from "react";
 import { RawScreen } from "../components/RawScreen";
 import { useAuth } from "../context/AuthContext";
 import { takeRedirect } from "../lib/auth";
-import html from "../screens/body_2.html?raw";
-
+import rawHtml from "../screens/body_2.html?raw";
+const html = rawHtml.replaceAll(
+  "http://13.218.115.196:5000",
+  import.meta.env.VITE_API_URL || "http://localhost:5000"
+);
 export const Route = createFileRoute("/register")({
   head: () => ({ meta: [{ title: "Register | SYNCSCRIPT" }] }),
   component: RegisterPage,

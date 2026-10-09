@@ -38,4 +38,5 @@ dist-ssr
 .freebuff/
 *.bak
 *.backup
+*.backup*.env
 *.backup*
